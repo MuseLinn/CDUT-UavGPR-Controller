@@ -41,7 +41,7 @@ def main():
 
     # 设置应用程序属性
     app.setApplicationName("CDUT-非显性滑坡延缓高效勘测技术装备研发")
-    app.setApplicationVersion("0.6a")
+    app.setApplicationVersion("0.8a")
 
     window = VNAControllerGUI()
     window.show()
