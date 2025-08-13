@@ -10,7 +10,7 @@
 /src/dist
 /tests
 
-*.png
+/*.png
 /src/main_nogui.py
 
 .classpath
