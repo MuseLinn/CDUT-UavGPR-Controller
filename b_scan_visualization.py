@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+"""
+Author       : Linn
+Date         :
+LastEditors  : Linn
+LastEditTime :
+FilePath     : \\usbvna\\src\\
+Description  : b_scan functions
+
+Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
+"""
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
