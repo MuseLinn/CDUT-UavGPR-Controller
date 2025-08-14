@@ -1,6 +1,6 @@
 # coding:UTF-8
 """
-    HWT905-TTL姿态传感器
+    HWT905-TTL姿态传感器，未集成，目前暂不需要使用
 """
 import time
 import datetime

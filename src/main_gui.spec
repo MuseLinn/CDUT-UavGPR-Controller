@@ -42,7 +42,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     # 指定图标文件
-    icon=os.path.join(vna_package_path, 'app_logo.png')  # {{ edit_1 }}
+    icon='GS_GPR探地雷达数据采集软件logo.png'  # {{ edit_1 }}
 )
 
 coll = COLLECT(exe,
