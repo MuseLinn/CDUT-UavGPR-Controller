@@ -12,11 +12,16 @@ Description  : Functions and Objects forked from PyQt6, FluentWindow and vna_con
 Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 """
 import os
+import sys
+# 将src目录添加到Python路径中
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import time
 import pyvisa as visa
 from datetime import datetime
 from .vna_controller import VNAController
 from .logger_config import setup_logger
+from .rtk_module import RTKModule
 
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QGroupBox, QLabel, QTextEdit, QStackedWidget,
@@ -30,7 +35,8 @@ from qfluentwidgets import (
     FluentWindow, FluentIcon, PrimaryPushButton, PushButton, EditableComboBox as ComboBox, SpinBox, DoubleSpinBox,
     LineEdit, ProgressBar, SplashScreen,
     InfoBar, InfoBarPosition, FluentIcon as FIF,
-    ComboBoxSettingCard, OptionsConfigItem, OptionsValidator, QConfig  # 添加新导入
+    ComboBoxSettingCard, OptionsConfigItem, OptionsValidator, QConfig,
+    SwitchButton, CheckBox, HeaderCardWidget, BodyLabel  # 添加RTK状态栏需要的组件
 )
 
 # NOTE: 创建日志记录器
@@ -196,7 +202,8 @@ class SinglePointDumpWorker(QThread):
     progress_updated = pyqtSignal(int, int)  # 当前进度, 总数
     finished_signal = pyqtSignal(bool, str)  # 成功与否, 消息
 
-    def __init__(self, vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval, start_index):
+    def __init__(self, vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval,
+                 start_index):
         super().__init__()
         self.vna_controller = vna_controller
         self.count = count
@@ -238,6 +245,163 @@ class SinglePointDumpWorker(QThread):
             self.finished_signal.emit(False, f"采集过程中发生错误: {str(e)}")
 
 
+class RTKStatusBar(HeaderCardWidget):
+    """RTK状态栏"""
+    
+    def __init__(self, parent=None):
+        super().__init__()
+        self.setTitle('RTK状态')
+        
+        # 创建标签
+        self.time_label = BodyLabel("系统时间: --:--:--")
+        self.satellite_label = BodyLabel("卫星数: -")
+        self.fix_type_label = BodyLabel("定位类型: -")
+        self.position_label = BodyLabel("位置: lat --.------, lon --.------, alt ----.- m")
+        
+        # 设置标签最小宽度
+        self.time_label.setMinimumWidth(150)
+        self.satellite_label.setMinimumWidth(80)
+        self.fix_type_label.setMinimumWidth(100)
+        
+        # 创建垂直布局容器
+        layout = QVBoxLayout()
+        layout.setSpacing(3)
+        layout.setContentsMargins(10, 5, 10, 5)
+        
+        # 创建第一行水平布局（时间信息）
+        time_layout = QHBoxLayout()
+        time_layout.setSpacing(10)
+        time_layout.addWidget(self.time_label)
+        time_layout.addStretch()
+        
+        # 创建第二行水平布局（卫星数和定位类型）
+        satellite_layout = QHBoxLayout()
+        satellite_layout.setSpacing(10)
+        satellite_layout.addWidget(self.satellite_label)
+        satellite_layout.addWidget(self.fix_type_label)
+        satellite_layout.addStretch()
+        
+        # 创建第三行水平布局（位置信息）
+        position_layout = QHBoxLayout()
+        position_layout.setSpacing(10)
+        position_layout.addWidget(self.position_label)
+        position_layout.addStretch()
+        
+        # 将三行布局添加到主布局
+        layout.addLayout(time_layout)
+        layout.addLayout(satellite_layout)
+        layout.addLayout(position_layout)
+        
+        # 添加布局到视图
+        self.viewLayout.addLayout(layout)
+        
+        # 缓存上一次显示的数据，避免不必要的更新
+        self._last_display_data = {}
+    
+    def update_display(self, data):
+        """高效更新显示内容，仅在数据变化时更新UI"""
+        try:
+            # 检查数据是否发生变化，避免不必要的UI更新
+            updates = {}
+            
+            # 时间信息
+            gps_time = data.get('utc_time', '')
+            if gps_time and len(gps_time) >= 6:
+                # 将GPS时间（UTC）转换为UTC+8
+                try:
+                    utc_hour = int(gps_time[:2])
+                    utc8_hour = (utc_hour + 8) % 24
+                    time_str = f"{utc8_hour:02d}:{gps_time[2:4]}:{gps_time[4:6]}"
+                    time_text = f"GPS时间: {time_str}（已同步UTC+8）"
+                except (ValueError, IndexError):
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    time_text = f"系统时间: {current_time} (GPS时间解析错误)"
+            else:
+                # 如果没有GPS时间，则显示系统时间
+                current_time = datetime.now().strftime("%H:%M:%S")
+                time_text = f"系统时间: {current_time}"
+                
+            if self._last_display_data.get('time') != time_text:
+                self.time_label.setText(time_text)
+                updates['time'] = time_text
+                
+            # 卫星数
+            satellites = data.get('satellites', '-')
+            # 如果是GSA数据，需要计算卫星数量
+            if isinstance(satellites, list):
+                # 过滤掉空的卫星ID
+                valid_satellites = [sat for sat in satellites if sat.strip()]
+                satellites = str(len(valid_satellites))
+            satellite_text = f"卫星数: {satellites}"
+            
+            if self._last_display_data.get('satellites') != satellite_text:
+                self.satellite_label.setText(satellite_text)
+                updates['satellites'] = satellite_text
+                
+            # # 定位类型
+            # fix_type = data.get('fix_type')  # 兼容从GGA数据中获取定位质量
+            # fix_type_text = ""
+            # if fix_type == '1':
+            #     fix_type_text = "未定位"
+            # elif fix_type == '2':
+            #     fix_type_text = "2D定位"
+            # elif fix_type == '3':
+            #     fix_type_text = "3D定位"
+            # else:
+            #     fix_type_text = "未知"
+            # DONE: 检查该字段是否正确处理
+            # 定位类型 - 使用quality字段（来自GGA）而不是fix_type（来自GSA）
+            quality = data.get('quality', '')  # GGA数据中的定位质量
+            fix_type_text = ""
+            if quality == '0':
+                fix_type_text = "未定位"
+            elif quality == '1':
+                fix_type_text = "单点定位"
+            elif quality == '2':
+                fix_type_text = "伪距/SBAS"
+            elif quality == '3':
+                fix_type_text = "无效PPS"
+            elif quality == '4':
+                fix_type_text = "RTK固定解"
+            elif quality == '5':
+                fix_type_text = "RTK浮点解"
+            elif quality == '6':
+                fix_type_text = "正在估算"
+            elif quality == '7':
+                fix_type_text = "手动模式"
+            elif quality == '8':
+                fix_type_text = "RTK宽窄解"
+            elif quality == '9':
+                fix_type_text = "伪距（诺瓦泰615）"
+            else:
+                fix_type_text = "未知"
+                    
+            fix_type_display = f"定位类型: {fix_type_text}"
+            
+            if self._last_display_data.get('fix_type') != fix_type_display:
+                self.fix_type_label.setText(fix_type_display)
+                updates['fix_type'] = fix_type_display
+                
+            # 位置信息
+            latitude = data.get('latitude', '--.------')
+            longitude = data.get('longitude', '--.------')
+            altitude = data.get('altitude', '----.-')
+            position_text = f"位置: lat {latitude}, lon {longitude}, alt {altitude} m"
+            
+            if self._last_display_data.get('position') != position_text:
+                self.position_label.setText(position_text)
+                updates['position'] = position_text
+                
+            # 更新缓存
+            self._last_display_data.update(updates)
+            
+            # 如果有任何更新，记录日志（用于调试）
+            if updates:
+                print(f"RTK状态栏更新: {list(updates.keys())}")
+                
+        except Exception as e:
+            print(f"RTK状态栏更新时出错: {str(e)}")
+
 class VNAControllerGUI(FluentWindow):
     def __init__(self):
         """初始化VNA控制器GUI界面"""
@@ -254,60 +418,82 @@ class VNAControllerGUI(FluentWindow):
         self.device_connected = False
 
         # 初始化各种工作线程
-        self.fixed_worker = None       # 定次采集工作线程
+        self.fixed_worker = None  # 定次采集工作线程
         self.continuous_worker = None  # 连续采集工作线程
-        self.point_worker = None       # 点测采集工作线程
+        self.point_worker = None  # 点测采集工作线程
 
         # 初始化工作状态
         self.is_continuous_running = False  # 连续采集运行状态
-        self.is_point_running = False       # 点测采集运行状态
+        self.is_point_running = False  # 点测采集运行状态
 
         # 点测模式计数器
-        self.point_sample_counter = 0       # 点测样本计数器
-        self.point_group_counter = 0        # 点测组计数器
+        self.point_sample_counter = 0  # 点测样本计数器
+        self.point_group_counter = 0  # 点测组计数器
 
         # 初始化界面组件
-        self.homeInterface = None           # 主界面部件
-        self.main_layout = None           # 主布局
-        self.title_label = None           # 标题标签
-        self.device_combo = None          # 设备选择下拉框
-        self.refresh_button = None        # 刷新设备按钮
-        self.connect_button = None        # 连接设备按钮
-        self.disconnect_button = None     # 断开设备按钮
-        self.get_id_button = None         # 获取设备ID按钮
-        self.catalog_button = None        # 查看目录按钮
-        self.path_line_edit = None        # 路径输入框
-        self.browse_dir_button = None     # 浏览目录按钮
-        self.change_dir_button = None     # 切换目录按钮
-        self.data_type_combo = None       # 数据类型下拉框
-        self.scope_combo = None           # 范围下拉框
-        self.format_combo = None          # 数据格式下拉框
-        self.selector_spin = None         # 测量编号选择框
-        self.file_prefix_line_edit = None # 文件前缀输入框
-        self.interval_spin = None         # 数据存储间隔时间选择框
-        self.point_mode_radio = None      # 点测模式单选按钮
-        self.fixed_mode_radio = None      # 定次采集模式单选按钮
-        self.continuous_mode_radio = None # 连续采集模式单选按钮
-        self.mode_stacked_widget = None   # 模式堆叠部件
+        self.homeInterface = None  # 主界面部件
+        self.main_layout = None  # 主布局
+        self.title_label = None  # 标题标签
+        self.device_combo = None  # 设备选择下拉框
+        self.refresh_button = None  # 刷新设备按钮
+        self.connect_button = None  # 连接设备按钮
+        self.disconnect_button = None  # 断开设备按钮
+        self.get_id_button = None  # 获取设备ID按钮
+        self.catalog_button = None  # 查看目录按钮
+        self.path_line_edit = None  # 路径输入框
+        self.browse_dir_button = None  # 浏览目录按钮
+        self.change_dir_button = None  # 切换目录按钮
+        self.data_type_combo = None  # 数据类型下拉框
+        self.scope_combo = None  # 范围下拉框
+        self.format_combo = None  # 数据格式下拉框
+        self.selector_spin = None  # 测量编号选择框
+        self.file_prefix_line_edit = None  # 文件前缀输入框
+        self.interval_spin = None  # 数据存储间隔时间选择框
+        self.point_mode_radio = None  # 点测模式单选按钮
+        self.fixed_mode_radio = None  # 定次采集模式单选按钮
+        self.continuous_mode_radio = None  # 连续采集模式单选按钮
+        self.mode_stacked_widget = None  # 模式堆叠部件
         self.point_acquire_button = None  # 点测采集按钮
-        self.point_count_spin = None      # 点测采集数量选择框
-        self.point_start_button = None    # 点测开始按钮
-        self.point_stop_button = None     # 点测停止按钮
-        self.fixed_count_spin = None      # 定次采集数量选择框
-        self.fixed_start_button = None    # 定次开始按钮
-        self.continuous_start_button = None # 连续开始按钮
+        self.point_count_spin = None  # 点测采集数量选择框
+        self.point_start_button = None  # 点测开始按钮
+        self.point_stop_button = None  # 点测停止按钮
+        self.fixed_count_spin = None  # 定次采集数量选择框
+        self.fixed_start_button = None  # 定次开始按钮
+        self.continuous_start_button = None  # 连续开始按钮
         self.continuous_stop_button = None  # 连续停止按钮
-        self.status_text_edit = None      # 状态信息文本框
-        self.progress_bar = None          # 进度条
+        self.status_text_edit = None  # 状态信息文本框
+        self.progress_bar = None  # 进度条
+
+        # RTK相关组件
+        self.rtk_port_combo = None  # RTK串口选择下拉框
+        self.rtk_baudrate_combo = None  # RTK波特率选择下拉框
+        self.rtk_enable_switch = None  # RTK启用开关
+        self.rtk_storage_combo = None  # RTK经纬度高程采样存储频率下拉框
+        self.rtk_status_bar = None  # RTK状态栏
+
+        # RTK相关属性
+        self.rtk_module = None
+        self.rtk_enabled = False
+        self.rtk_data_file = None
+        self.rtk_storage_frequency = 2  # 默认经纬度高程采样存储频率为2Hz
+        self.rtk_data_storage_enabled = True  # 添加RTK数据存储开关，默认开启
+        
+        # 存储最近的RTK数据
+        self.latest_rtk_gga_data = {}
+        self.latest_rtk_rmc_data = {}
+        self.latest_rtk_gsa_data = {}
+        
+        # 系统定时器，用于更新系统时间
+        self.system_timer = None
 
         # 创建界面
         """初始化用户界面组件"""
         # 设置窗口标题和大小
-        self.setWindowTitle('CDUT-非显性滑坡延缓高效勘测技术装备研发')
-        self.resize(1100, 800)
-        self.setMinimumSize(1100, 800)
+        self.setWindowTitle('低频无人机航空探地雷达装备及配套软件研发')
+        # self.resize(1200, 900)
+        # self.setMinimumSize(1200, 900)
         root = QFileInfo(__file__).absolutePath()
-        self.setWindowIcon(QIcon(root+'/app_logo.png'))
+        self.setWindowIcon(QIcon(root + '/app_logo.png'))
         # 创建启动页面
         self.splashScreen = SplashScreen(self.windowIcon(), self)
         self.splashScreen.setIconSize(QSize(102, 102))
@@ -326,10 +512,15 @@ class VNAControllerGUI(FluentWindow):
         self.homeInterface = QWidget()
         if hasattr(self.homeInterface, 'setObjectName'):
             self.homeInterface.setObjectName("homeInterface")  # 添加对象名称
-            
+
         # 初始化spacing属性
         self.spacing = 10
         
+        # 初始化系统定时器，用于更新系统时间
+        self.system_timer = QTimer()
+        self.system_timer.timeout.connect(self.update_system_time)
+        self.system_timer.start(1000)  # 每秒更新一次
+
         # 创建主水平布局
         main_h_layout = QHBoxLayout(self.homeInterface)
         main_h_layout.setSpacing(self.spacing)
@@ -342,7 +533,7 @@ class VNAControllerGUI(FluentWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建标题
-        self.title_label = QLabel('CDUT-GPR探地雷达采集控制面板v0.8Rev9')
+        self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板v0.8Rev9')
         self.title_label.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title_label.setStyleSheet("color: #007acc; margin: 10px 0;")
@@ -360,14 +551,18 @@ class VNAControllerGUI(FluentWindow):
         status_layout = QVBoxLayout(self.status_widget)
         status_layout.setSpacing(self.spacing)
         status_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 创建状态信息区域
+
+        # 创建状态信息区域（这里会自动创建并添加RTK状态栏）
         self.create_status_section()
         status_layout.addWidget(self.status_group)
 
+        # 创建底部RTK状态栏
+        # 删除这行，因为RTK状态栏已经在create_status_section中创建和添加了
+        # self.create_rtk_status_bar()
+
         # 将左右区域添加到主布局
-        main_h_layout.addWidget(self.config_widget, 3)  # 左侧配置区域占3份
-        main_h_layout.addWidget(self.status_widget, 2)  # 右侧状态区域占2份
+        main_h_layout.addWidget(self.config_widget, 4)  # 左侧配置区域占4份
+        main_h_layout.addWidget(self.status_widget, 3)  # 右侧状态区域占3份
 
         # 添加界面到 FluentWindow
         self.initNavigation()
@@ -378,8 +573,13 @@ class VNAControllerGUI(FluentWindow):
         self.init_data_options()
         # 初始化采集模式
         self.init_acquisition_modes()
+        # 更新设备状态显示
+        self.update_device_status()
         # 显示初始状态信息（现在确保组件已创建）
         self.log_message("系统初始化完成，准备就绪")
+        
+        # 启动系统时间定时器
+        self.start_system_timer()
 
     def center_window(self):
         """将窗口居中显示在屏幕中央"""
@@ -400,7 +600,6 @@ class VNAControllerGUI(FluentWindow):
 
     def initNavigation(self):
         self.addSubInterface(self.homeInterface, FIF.HOME, '主页')
-
 
     def log_message(self, message):
         """在状态文本框中添加日志消息"""
@@ -443,7 +642,7 @@ class VNAControllerGUI(FluentWindow):
         self.get_id_button.setEnabled(False)
 
         connection_layout.addWidget(device_label)
-        connection_layout.addWidget(self.device_combo, 2) # 添加拉伸因子，占满剩余空间
+        connection_layout.addWidget(self.device_combo, 2)  # 添加拉伸因子，占满剩余空间
         connection_layout.addWidget(self.refresh_button)
         connection_layout.addWidget(self.connect_button)
         connection_layout.addWidget(self.disconnect_button)
@@ -452,6 +651,97 @@ class VNAControllerGUI(FluentWindow):
 
         connection_group_layout.addLayout(connection_layout)
         self.main_layout.addWidget(connection_group)
+
+        # RTK控制区域
+        rtk_group = QGroupBox("RTK定位模块")
+        rtk_group_layout = QVBoxLayout(rtk_group)
+        rtk_group_layout.setSpacing(self.spacing)
+        rtk_group_layout.setContentsMargins(15, 15, 15, 15)
+
+        # RTK串口选择和控制行
+        rtk_control_layout = QHBoxLayout()
+        
+        rtk_port_label = QLabel('RTK串口:')
+        self.rtk_port_combo = ComboBox()
+        # 获取可用的串口列表
+        self.refresh_rtk_ports()  # 使用方法来初始化串口列表
+        
+        rtk_refresh_button = PushButton('刷新')
+        rtk_refresh_button.clicked.connect(self.refresh_rtk_ports)
+        
+        rtk_enable_label = QLabel('启用:')
+        self.rtk_enable_switch = SwitchButton()
+        self.rtk_enable_switch.setChecked(False)
+        
+        # RTK波特率选择
+        rtk_baudrate_label = QLabel('波特率:')
+        self.rtk_baudrate_combo = ComboBox()
+        # 获取支持的波特率列表
+        supported_baudrates = RTKModule.get_baudrates()
+        baudrate_strings = [str(b) for b in supported_baudrates]
+        self.rtk_baudrate_combo.addItems(baudrate_strings)
+        self.rtk_baudrate_combo.setCurrentText('115200')  # 设置默认值为115200
+        
+        rtk_control_layout.addWidget(rtk_port_label)
+        rtk_control_layout.addWidget(self.rtk_port_combo)
+        rtk_control_layout.addWidget(rtk_refresh_button)
+        rtk_control_layout.addWidget(rtk_baudrate_label)
+        rtk_control_layout.addWidget(self.rtk_baudrate_combo)
+        rtk_control_layout.addWidget(rtk_enable_label)
+        rtk_control_layout.addWidget(self.rtk_enable_switch)
+        rtk_control_layout.addStretch()
+        
+        # RTK经纬度高程采样存储频率选择和存储开关
+        rtk_storage_layout = QHBoxLayout()
+        rtk_storage_label = QLabel('经纬度高程数据采样频率:')
+        self.rtk_storage_combo = ComboBox()
+        self.rtk_storage_combo.addItems(['1Hz', '2Hz', '5Hz', '10Hz', '20Hz'])
+        self.rtk_storage_combo.setCurrentText('2Hz')
+        
+        # 添加RTK数据存储开关
+        rtk_data_storage_label = QLabel('存储RTK数据:')
+        self.rtk_data_storage_switch = SwitchButton()
+        self.rtk_data_storage_switch.setChecked(True)  # 默认开启存储
+        self.rtk_data_storage_switch.checkedChanged.connect(self.toggle_rtk_data_storage)
+        
+        rtk_storage_layout.addWidget(rtk_storage_label)
+        rtk_storage_layout.addWidget(self.rtk_storage_combo)
+        rtk_storage_layout.addWidget(rtk_data_storage_label)
+        rtk_storage_layout.addWidget(self.rtk_data_storage_switch)
+        rtk_storage_layout.addStretch()
+        
+        rtk_group_layout.addLayout(rtk_control_layout)
+        rtk_group_layout.addLayout(rtk_storage_layout)
+        
+        self.main_layout.addWidget(rtk_group)
+
+    def refresh_rtk_ports(self):
+        """刷新RTK串口列表"""
+        # 保存当前选择的串口（如果存在）
+        current_port = self.rtk_port_combo.currentText() if self.rtk_port_combo.count() > 0 else None
+        
+        # 清空现有列表
+        self.rtk_port_combo.clear()
+        
+        # 获取可用的串口列表
+        available_ports = RTKModule.list_available_ports()
+        if available_ports:
+            self.rtk_port_combo.addItems(available_ports)
+            # 尝试恢复之前选择的串口，如果不存在则选择第一个
+            if current_port and current_port in available_ports:
+                self.rtk_port_combo.setCurrentText(current_port)
+            else:
+                self.rtk_port_combo.setCurrentText(available_ports[0])
+        else:
+            # 如果没有检测到串口，则添加常见的Windows串口
+            common_ports = ['COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 
+                           'COM9', 'COM10', 'COM11', 'COM12', 'COM13', 'COM14', 'COM15', 'COM16']
+            self.rtk_port_combo.addItems(common_ports)
+            # 尝试恢复之前选择的串口，如果不存在则选择COM11
+            if current_port and current_port in common_ports:
+                self.rtk_port_combo.setCurrentText(current_port)
+            else:
+                self.rtk_port_combo.setCurrentText('COM11')
 
     def create_data_config_section(self):
         """创建数据采集配置区域"""
@@ -503,7 +793,7 @@ class VNAControllerGUI(FluentWindow):
         grid_layout = QGridLayout()
         grid_layout.setHorizontalSpacing(15)
         grid_layout.setVerticalSpacing(10)
-        
+
         # 第一行控件
         data_type_label = QLabel('数据类型:')
         data_type_label.setMinimumWidth(80)  # 设置标签最小宽度以保证对齐
@@ -567,19 +857,19 @@ class VNAControllerGUI(FluentWindow):
         grid_layout.addWidget(self.data_type_combo, 0, 1)
         grid_layout.addWidget(scope_label, 0, 2)
         grid_layout.addWidget(self.scope_combo, 0, 3)
-        
+
         # 第二行
         grid_layout.addWidget(format_label, 1, 0)
         grid_layout.addWidget(self.format_combo, 1, 1)
         grid_layout.addWidget(selector_label, 1, 2)
         grid_layout.addWidget(self.selector_spin, 1, 3)
-        
+
         # 第三行
         grid_layout.addWidget(file_prefix_label, 2, 0)
         grid_layout.addWidget(self.file_prefix_line_edit, 2, 1)
         grid_layout.addWidget(interval_label, 2, 2)
         grid_layout.addWidget(self.interval_spin, 2, 3)
-        
+
         # 添加弹性空间
         grid_layout.setColumnStretch(1, 1)
         grid_layout.setColumnStretch(3, 1)
@@ -708,17 +998,20 @@ class VNAControllerGUI(FluentWindow):
 
         # 状态文本框
         self.status_text_edit = QTextEdit()
-        self.status_text_edit.setMinimumHeight(100)
+        self.status_text_edit.setMinimumHeight(80)
         self.status_text_edit.setReadOnly(True)
         status_group_layout.addWidget(self.status_text_edit)
 
         # 进度条
         self.progress_bar = ProgressBar()
         self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(False) # 默认隐藏进度条
+        self.progress_bar.setVisible(False)  # 默认隐藏进度条
         status_group_layout.addWidget(self.progress_bar)
 
-        # 注意：这里不再添加到主布局
+        # 先创建RTK状态栏，然后再添加到布局中
+        self.create_rtk_status_bar()
+        if self.rtk_status_bar:
+            status_group_layout.addWidget(self.rtk_status_bar)
 
     def init_data_options(self):
         """初始化数据采集选项"""
@@ -740,10 +1033,14 @@ class VNAControllerGUI(FluentWindow):
         self.browse_dir_button.clicked.connect(self.browse_directory)
         self.change_dir_button.clicked.connect(self.change_directory)
 
+        # RTK控制连接
+        self.rtk_enable_switch.checkedChanged.connect(self.toggle_rtk_module)
+        self.rtk_storage_combo.currentTextChanged.connect(self.change_rtk_storage_frequency)
+
         # 点测模式按钮
         self.point_acquire_button.clicked.connect(self.point_acquire)
         self.point_start_button.clicked.connect(self.start_point_measurement)  # 使用实际存在的方法名
-        self.point_stop_button.clicked.connect(self.stop_point_measurement)    # 使用实际存在的方法名
+        self.point_stop_button.clicked.connect(self.stop_point_measurement)  # 使用实际存在的方法名
 
         # 定次采集模式按钮
         self.fixed_start_button.clicked.connect(self.start_fixed_acquire)
@@ -755,6 +1052,247 @@ class VNAControllerGUI(FluentWindow):
         # 添加模式切换时重置点测计数器
         # 注意：由于现在使用ComboBoxSettingCard，我们需要连接到配置项的valueChanged信号
         self.mode_config.Mode.valueChanged.connect(self.reset_point_counter_on_mode_change)
+
+    def toggle_rtk_module(self, checked):
+        """开关RTK模块"""
+        if checked:
+            self.log_message("正在启用RTK模块...")
+            try:
+                # 获取选择的串口和波特率
+                selected_port = self.rtk_port_combo.currentText()
+                selected_baudrate = int(self.rtk_baudrate_combo.currentText())
+                # 更新RTK模块实例
+                self.rtk_module = RTKModule(port=selected_port, baudrate=selected_baudrate)
+                
+                # 先连接信号再启动模块，确保不会错过任何数据
+                self.rtk_module.rtk_data_updated.connect(self.update_rtk_data)
+                self.rtk_module.rtk_error_occurred.connect(self.handle_rtk_error)
+                self.rtk_module.rtk_module_info_received.connect(self.display_rtk_module_info)
+
+                # 连接并启动RTK模块
+                if self.rtk_module.connect():
+
+                    if self.rtk_module.start():
+                        self.rtk_enabled = True
+                        
+                        # 如果RTK数据存储已启用，则设置数据文件
+                        if self.rtk_data_storage_enabled:
+                            self.setup_rtk_data_file()
+                            
+                        self.log_message("RTK模块已启用")
+                        
+                        # 设置RTK模块的采样频率
+                        current_frequency_text = self.rtk_storage_combo.currentText()
+                        self.change_rtk_storage_frequency(current_frequency_text)
+                        
+                        # 重新配置定时器：不完全停止，而是降低频率
+                        if self.system_timer and self.system_timer.isActive():
+                            self.system_timer.stop()
+                            # 设置一个备用定时器，以防RTK数据中断
+                            self.system_timer.start(5000)  # 每5秒更新一次作为备用
+                        
+                        InfoBar.success(
+                            title='RTK模块',
+                            content=f'RTK模块已在 {selected_port} 上启用，波特率: {selected_baudrate}',
+                            orient=Qt.Orientation.Horizontal,
+                            isClosable=True,
+                            position=InfoBarPosition.TOP,
+                            duration=2000,
+                            parent=self
+                        )
+                    else:
+                        self.log_message("启动RTK模块失败")
+                        # 清理信号连接
+                        self.rtk_module.rtk_data_updated.disconnect()
+                        self.rtk_module.rtk_error_occurred.disconnect()
+                        self.rtk_module.rtk_module_info_received.disconnect()
+                        InfoBar.error(
+                            title='RTK模块',
+                            content='启动RTK模块失败',
+                            orient=Qt.Orientation.Horizontal,
+                            isClosable=True,
+                            position=InfoBarPosition.TOP,
+                            duration=2000,
+                            parent=self
+                        )
+                        self.rtk_enable_switch.setChecked(False)
+                else:
+                    self.log_message("连接RTK模块失败")
+                    # 清理信号连接
+                    self.rtk_module.rtk_data_updated.disconnect()
+                    self.rtk_module.rtk_error_occurred.disconnect()
+                    self.rtk_module.rtk_module_info_received.disconnect()
+                    InfoBar.error(
+                        title='RTK模块',
+                        content='连接RTK模块失败',
+                        orient=Qt.Orientation.Horizontal,
+                        isClosable=True,
+                        position=InfoBarPosition.TOP,
+                        duration=2000,
+                        parent=self
+                    )
+                    self.rtk_enable_switch.setChecked(False)
+            except Exception as e:
+                self.log_message(f"启用RTK模块失败: {str(e)}")
+                InfoBar.error(
+                    title='RTK模块',
+                    content=f'启用RTK模块失败: {str(e)}',
+                    orient=Qt.Orientation.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP,
+                    duration=2000,
+                    parent=self
+                )
+                self.rtk_enable_switch.setChecked(False)
+        else:
+            self.log_message("正在禁用RTK模块...")
+            try:
+                # 关闭RTK数据文件
+                if self.rtk_module and self.rtk_data_file:
+                    self.rtk_module.close_data_file()
+                    self.rtk_data_file = None
+                    
+                # 断开RTK模块
+                if self.rtk_module:
+                    self.rtk_module.disconnect()
+                    try:
+                        self.rtk_module.rtk_data_updated.disconnect()
+                        self.rtk_module.rtk_error_occurred.disconnect()
+                        self.rtk_module.rtk_module_info_received.disconnect()
+                    except TypeError:
+                        # 如果信号未连接就断开，会抛出TypeError，忽略即可
+                        pass
+                    self.rtk_enabled = False
+                    port = self.rtk_port_combo.currentText()
+                    self.log_message(f"RTK模块已禁用 (串口: {port})")
+                    
+                    # 恢复系统定时器为正常频率
+                    if self.system_timer:
+                        self.system_timer.stop()
+                        self.system_timer.start(1000)  # 恢复每秒更新
+                
+                    InfoBar.info(
+                        title='RTK已禁用',
+                        content=f'RTK模块已从串口 {port} 断开',
+                        orient=Qt.Orientation.Horizontal,
+                        isClosable=True,
+                        position=InfoBarPosition.TOP,
+                        duration=2000,
+                        parent=self
+                    )
+            except Exception as e:
+                self.log_message(f"禁用RTK模块时出错: {str(e)}")
+
+    def toggle_rtk_data_storage(self, checked):
+        """开关RTK数据存储"""
+        self.rtk_data_storage_enabled = checked
+        if self.rtk_enabled:
+            if checked:
+                # 启用RTK数据存储
+                self.setup_rtk_data_file()
+                self.log_message("RTK数据存储已启用")
+            else:
+                # 禁用RTK数据存储
+                if self.rtk_module:
+                    self.rtk_module.close_data_file()
+                    self.rtk_data_file = None
+                self.log_message("RTK数据存储已禁用")
+
+    def setup_rtk_data_file(self):
+        """设置RTK数据文件"""
+        if not self.rtk_module or not self.rtk_data_storage_enabled:
+            return
+            
+        try:
+            # 使用与VNA数据相同的路径
+            path = self.path_line_edit.text()
+            if not path:
+                # 如果没有设置路径，使用默认路径
+                path = os.path.join(os.path.expanduser("~"), "Documents")
+                
+            # 确保路径存在
+            os.makedirs(path, exist_ok=True)
+            
+            # 生成RTK数据文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            rtk_filename = os.path.join(path, f"rtk_data_{timestamp}.csv")
+            
+            # 设置RTK模块的数据文件
+            self.rtk_module.set_data_file(rtk_filename)
+            self.rtk_data_file = rtk_filename
+            self.log_message(f"RTK数据将存储到: {rtk_filename}")
+        except Exception as e:
+            self.log_message(f"设置RTK数据文件时出错: {str(e)}")
+            InfoBar.error(
+                title='RTK数据存储',
+                content=f'设置RTK数据文件时出错: {str(e)}',
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
+            )
+
+    def change_rtk_storage_frequency(self, frequency_text):
+        """更改RTK经纬度高程采样存储频率"""
+        frequency_map = {
+            '1Hz': 1,
+            '2Hz': 2,
+            '5Hz': 5,
+            '10Hz': 10,
+            '20Hz': 20
+        }
+        self.rtk_storage_frequency = frequency_map.get(frequency_text, 2)
+        if self.rtk_module:
+            self.rtk_module.set_storage_frequency(self.rtk_storage_frequency)
+        self.log_message(f"RTK经纬度高程数据采样存储频率已设置为: {frequency_text}")
+
+    def update_rtk_data(self, data):
+        """更新RTK数据"""
+        try:
+            # 缓存最新数据
+            if data['type'] == 'GGA':
+                self.latest_rtk_gga_data = data
+            elif data['type'] == 'RMC':
+                self.latest_rtk_rmc_data = data
+            elif data['type'] == 'GSA':
+                self.latest_rtk_gsa_data = data
+                
+            # 合并所有RTK数据以获得完整信息
+            combined_data = {}
+            combined_data.update(self.latest_rtk_gga_data)
+            combined_data.update(self.latest_rtk_rmc_data)
+            combined_data.update(self.latest_rtk_gsa_data)
+            
+            # 确保RTK状态栏存在再更新显示
+            if self.rtk_status_bar:
+                self.rtk_status_bar.update_display(combined_data)
+            
+            # 记录数据接收日志（可选，用于调试）
+            if data['type'] == 'GGA':
+                self.log_message(f"RTK数据更新: {data['type']} - 纬度:{data.get('latitude', 'N/A')}, 经度:{data.get('longitude', 'N/A')}")
+        except Exception as e:
+            self.log_message(f"更新RTK数据时出错: {str(e)}")
+
+
+    def handle_rtk_error(self, error_message):
+        """处理RTK模块错误"""
+        self.log_message(f"RTK错误: {error_message}")
+        InfoBar.error(
+            title='RTK模块',
+            content=error_message,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            duration=3000,
+            parent=self
+        )
+
+    def display_rtk_module_info(self, module_info):
+        """显示RTK模块信息"""
+        model = module_info.get('model', '未知型号')
+        firmware = module_info.get('firmware', '未知版本')
+        self.log_message(f"RTK模块信息 - 型号: {model}, 固件版本: {firmware}")
 
     def reset_point_counter(self, checked):
         """重置点测计数器"""
@@ -773,7 +1311,7 @@ class VNAControllerGUI(FluentWindow):
         # 如果从点测模式切换到其他模式，需要关闭点测
         if self.mode_config.Mode.value != "point" and self.is_point_running:
             self.is_point_running = False
-            
+
         if self.mode_config.Mode.value == "point":
             self.mode_stacked_widget.setCurrentIndex(0)
         elif self.mode_config.Mode.value == "fixed":
@@ -867,8 +1405,8 @@ class VNAControllerGUI(FluentWindow):
             else:
                 # 连接失败，清理新创建的控制器
                 # try:
-                    # new_controller.close_device()
-                    # del new_controller
+                # new_controller.close_device()
+                # del new_controller
                 # except Exception:
                 #     pass
                 self.log_message(f"无法连接到设备: {resource_name}")
@@ -958,34 +1496,35 @@ class VNAControllerGUI(FluentWindow):
                     duration=1000,
                     parent=self
                 )
-        else:
-            self.log_message("没有设备连接")
 
     def update_ui_state(self):
         """更新UI控件的启用/禁用状态"""
         # 更新连接相关按钮状态
         self.connect_button.setEnabled(not self.device_connected)
         self.disconnect_button.setEnabled(self.device_connected)
-        
+
         # 更新设备控制按钮状态
         device_control_enabled = self.device_connected
         self.get_id_button.setEnabled(device_control_enabled)
         self.catalog_button.setEnabled(device_control_enabled)
         self.browse_dir_button.setEnabled(device_control_enabled)
         self.change_dir_button.setEnabled(device_control_enabled)
-        
+
         # 更新采集模式按钮状态
         # 点测模式按钮
         self.point_acquire_button.setEnabled(device_control_enabled and self.is_point_running)  # 只有在点测模式运行时才启用
         self.point_start_button.setEnabled(device_control_enabled and not self.is_point_running)
         self.point_stop_button.setEnabled(device_control_enabled and self.is_point_running)
-        
+
         # 定次采集模式按钮
         self.fixed_start_button.setEnabled(device_control_enabled and not self.is_continuous_running)
-        
+
         # 连续采集模式按钮
         self.continuous_start_button.setEnabled(device_control_enabled and not self.is_continuous_running)
         self.continuous_stop_button.setEnabled(device_control_enabled and self.is_continuous_running)
+        
+        # 更新设备状态显示
+        self.update_device_status()
 
     def start_point_measurement(self):
         """开始点测采集"""
@@ -1293,7 +1832,7 @@ class VNAControllerGUI(FluentWindow):
         # 更新UI状态
         self.point_acquire_button.setEnabled(False)
         self.point_start_button.setEnabled(False)  # 保持点测开启状态
-        self.point_stop_button.setEnabled(True)   # 保持点测开启状态
+        self.point_stop_button.setEnabled(True)  # 保持点测开启状态
         self.fixed_start_button.setEnabled(False)
         self.continuous_start_button.setEnabled(False)
         self.progress_bar.setVisible(True)  # 显示进度条
@@ -1315,7 +1854,7 @@ class VNAControllerGUI(FluentWindow):
         # 重新启用按钮
         self.point_acquire_button.setEnabled(True)
         self.point_start_button.setEnabled(False)  # 保持点测开启状态
-        self.point_stop_button.setEnabled(True)   # 保持点测开启状态
+        self.point_stop_button.setEnabled(True)  # 保持点测开启状态
         self.fixed_start_button.setEnabled(False)
         self.continuous_start_button.setEnabled(False)
         # 注意：不修改is_point_running状态，保持点测模式开启
@@ -1344,7 +1883,6 @@ class VNAControllerGUI(FluentWindow):
                 duration=2000,
                 parent=self
             )
-
 
         # 重置进度条
         self.progress_bar.setValue(0)
@@ -1545,3 +2083,66 @@ class VNAControllerGUI(FluentWindow):
                 duration=1000,
                 parent=self
             )
+
+    def create_rtk_status_bar(self):
+        """创建RTK状态栏"""
+        self.rtk_status_bar = RTKStatusBar(self)
+        # 确保RTK状态栏可见
+        self.rtk_status_bar.setVisible(True)
+        # 不在这里添加到布局，而是在create_status_section中添加
+        # # 将RTK状态栏添加到右侧状态区域
+        # if hasattr(self, 'status_widget') and self.status_widget is not None:
+        #     layout = self.status_widget.layout()
+        #     if layout:
+        #         layout.addWidget(self.rtk_status_bar)
+        
+        # 启动系统时间定时器
+        self.start_system_timer()
+
+    def start_system_timer(self):
+        """启动系统时间定时器"""
+        from PyQt6.QtCore import QTimer
+        self.system_timer = QTimer(self)
+        self.system_timer.timeout.connect(self.update_system_time)
+        self.system_timer.start(1000)  # 每秒更新一次
+
+    def update_system_time(self):
+        """更新系统时间显示"""
+        if self.rtk_status_bar:
+            if not self.rtk_enabled:
+                # RTK未启用时显示系统时间
+                current_time = datetime.now().strftime("%H:%M:%S")
+                self.rtk_status_bar.time_label.setText(f"系统时间: {current_time}")
+            else:
+                # RTK启用时，如果长时间没有收到数据，显示备用时间信息
+                current_time = datetime.now().strftime("%H:%M:%S")
+                if hasattr(self, 'latest_rtk_gga_data') and self.latest_rtk_gga_data:
+                    last_update_time = self.latest_rtk_gga_data.get('timestamp', 0)
+                    if time.time() - last_update_time > 10:  # 超过10秒没有数据更新
+                        self.rtk_status_bar.time_label.setText(f"系统时间: {current_time} (RTK数据延迟)")
+                else:
+                    self.rtk_status_bar.time_label.setText(f"系统时间: {current_time} (等待RTK数据)")
+
+    def update_device_status(self):
+        """更新设备状态显示"""
+        if hasattr(self, 'device_status_label') and self.device_status_label is not None:
+            if self.device_connected:
+                self.device_status_label.setText("设备: 已连接")
+                self.device_status_label.setStyleSheet("color: green;")
+            else:
+                self.device_status_label.setText("设备: 未连接")
+                self.device_status_label.setStyleSheet("color: red;")
+
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        # 停止系统定时器
+        if self.system_timer:
+            self.system_timer.stop()
+            
+        # 确保RTK模块正确关闭
+        if self.rtk_enabled:
+            self.rtk_enable_switch.setChecked(False)
+            self.toggle_rtk_module(False)
+        
+        # 调用父类的关闭事件
+        super().closeEvent(event)

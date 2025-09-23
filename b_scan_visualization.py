@@ -369,31 +369,31 @@ if __name__ == "__main__":
         # 绘制并保存图像
         output_image = "b_scan_visualization.png"
         # 可以自定义时间范围，例如：
-        b_scan_stacked.plot(output_image, time_start=0, time_end=800)  # 使用内置灰度映射
+        b_scan_stacked.plot(output_image, time_start=0, time_end=800, cmap_type='jet')  # 使用内置灰度映射
         # 或使用默认参数自动计算时间范围
         # plot_b_scan(b_scan_data, output_image)
 
         # 对B-scan数据进行背景抑制
         b_scan_processed = b_scan_data.copy().suppress_background(method='mean')
-        b_scan_processed.plot("b_scan_visualization_mean.png", time_start=0, time_end=800)
+        b_scan_processed.plot("b_scan_visualization_mean.png", time_start=0, time_end=800, cmap_type='jet')
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='mean')
-        b_scan_processed.plot("b_scan_visualization_mean_stacked.png", time_start=0, time_end=800)
+        b_scan_processed.plot("b_scan_visualization_mean_stacked.png", time_start=0, time_end=800, cmap_type='jet')
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='median')
-        b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=800)
+        b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=800, cmap_type='jet')
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='first_trace')
-        b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=800)
+        b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=800, cmap_type='jet')
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='direct_wave')
-        b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=800)
+        b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=800, cmap_type='jet')
         
         # 示例2: 使用链式调用处理数据
         print("\n=== 使用链式调用处理数据 ===")
         # 链式调用示例：叠加 -> 背景抑制 -> AGC处理
         b_scan_result = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='mean').apply_agc(agc_type='mean')
-        b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=800)
+        b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=800, cmap_type='jet')
         
         # 另一个链式调用示例：叠加 -> 背景抑制(不同方法) -> AGC处理(不同参数)
         b_scan_result2 = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='direct_wave').apply_agc(agc_type='rms', agc_window=50)
-        b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=800)
+        b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=800, cmap_type='jet')
 
         print("处理完成！")
     except Exception as e:

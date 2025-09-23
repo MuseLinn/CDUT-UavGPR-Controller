@@ -11,21 +11,20 @@ Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 """
 
 import sys
-import os
+# import os
 
 # 将src目录添加到Python路径中，以便可以导入vna_package模块
-sys.path.append(os.path.join(os.path.dirname(__file__)))
+# sys.path.append(os.path.join(os.path.dirname(__file__))) # 以下已作为包导入
 
 # 从vna_package模块导入VNAController类和日志配置函数
-from vna_package.logger_config import setup_logger
-from vna_package.fluent_window import VNAControllerGUI
+from lib.logger_config import setup_logger
+from lib.fluent_window import VNAControllerGUI
 
 # NOTE: 创建日志记录器，使用轮转日志文件，每个文件最大10MB，保留5个备份文件
 logger = setup_logger("vna_gui", "logs/vna_gui.log", level=10)  # 10对应DEBUG级别
 
 from PyQt6.QtWidgets import (
-    QApplication, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit, QStackedWidget,
-    QFileDialog  # 添加文件对话框支持
+    QApplication
 )
 from PyQt6.QtCore import Qt
 
