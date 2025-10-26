@@ -533,7 +533,8 @@ class VNAControllerGUI(FluentWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建标题
-        self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板v0.8Rev9')
+        # self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板v0.9Rev2')
+        self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板')
         self.title_label.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title_label.setStyleSheet("color: #007acc; margin: 10px 0;")
@@ -839,7 +840,7 @@ class VNAControllerGUI(FluentWindow):
         file_prefix_label = QLabel('文件前缀:')
         file_prefix_label.setMinimumWidth(80)  # 保持一致的标签宽度
         self.file_prefix_line_edit = LineEdit()
-        self.file_prefix_line_edit.setText('usbvna')
+        self.file_prefix_line_edit.setText('lineData')
         self.file_prefix_line_edit.setMinimumWidth(80)
 
         interval_label = QLabel('存储间隔(s):')

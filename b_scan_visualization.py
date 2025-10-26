@@ -4,10 +4,16 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.font_manager as fm
 from matplotlib.backends.backend_qtagg import FigureCanvasQT
+from matplotlib.animation import FuncAnimation
 
 # 设置中文字体支持
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+
+
+# 添加对tempfile和shutil模块的支持
+import tempfile
+import shutil
 
 
 class BScan:
@@ -308,6 +314,92 @@ class BScan:
             plt.show()
             
         return self
+    
+    def animate_a_scan(self, output_gif="a_scan_animation.gif", time_per_scan=200, fps=10, max_frames=100):
+        """
+        创建A-scan动态图像并保存为GIF
+        
+        参数:
+        output_gif: 输出GIF文件路径
+        time_per_scan: 每个A-scan的时间长度（纳秒）
+        fps: 帧率（每秒帧数）
+        max_frames: 最大帧数，用于控制GIF大小
+        
+        返回:
+        self: 返回对象本身以支持链式调用
+        """
+        try:
+            import imageio.v2 as imageio
+        except ImportError:
+            print("警告: 需要安装imageio库才能生成GIF动画: pip install imageio")
+            return self
+        
+        b_scan = self.data
+        
+        # 获取A-scan的数量
+        num_scans = b_scan.shape[1]
+        
+        # 创建时间轴（假定每个A-scan有固定的时间长度）
+        time_axis = np.linspace(0, time_per_scan, b_scan.shape[0])
+        
+        # 创建临时目录来存储帧
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            frame_files = []
+            
+            # 确定帧间隔以控制总帧数
+            frame_step = max(1, num_scans // max_frames)
+            
+            print(f"生成动画帧，共 {num_scans//frame_step} 帧...")
+            
+            # 创建固定的图形和轴
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # 初始化线条
+            line, = ax.plot([], [], lw=2)
+            
+            # 设置轴限制
+            ax.set_xlim(time_axis[0], time_axis[-1])
+            ax.set_ylim(np.min(b_scan), np.max(b_scan))
+            
+            # 设置标签
+            ax.set_xlabel('时间 (ns)')
+            ax.set_ylabel('S21 Real(U)')
+            
+            # 为每个选定的A-scan生成图像
+            for i in range(0, num_scans, frame_step):
+                # 更新数据
+                line.set_data(time_axis, b_scan[:, i])
+                ax.set_title(f'A-scan #{i+1} 动态变化')
+                
+                # 保存帧到临时文件
+                frame_file = os.path.join(temp_dir, f'frame_{i:04d}.png')
+                plt.savefig(frame_file, dpi=100, bbox_inches='tight')
+                frame_files.append(frame_file)
+                
+                # 显示进度
+                if (i // frame_step + 1) % 10 == 0:
+                    print(f"已生成 {i // frame_step + 1} 帧")
+            
+            plt.close(fig)
+            
+            # 从帧创建GIF
+            if frame_files:
+                with imageio.get_writer(output_gif, mode='I', fps=fps) as writer:
+                    for frame_file in frame_files:
+                        image = imageio.imread(frame_file)
+                        writer.append_data(image)
+                
+                print(f"GIF动画已保存至 {output_gif}")
+            else:
+                print("未能生成GIF动画")
+                
+        finally:
+            # 清理临时目录
+            shutil.rmtree(temp_dir)
+        
+        return self
 
 
 def read_a_scan(csv_file):
@@ -316,6 +408,13 @@ def read_a_scan(csv_file):
     data = np.genfromtxt(csv_file, delimiter=',', skip_header=7, skip_footer=1)
     # 返回S21 Real(U)值（第二列）
     return data[:, 1]
+
+def read_full_a_scan(csv_file):
+    """读取单个CSV文件中的完整A-scan数据，包括时间轴"""
+    # 跳过前7行表头，读取数据
+    data = np.genfromtxt(csv_file, delimiter=',', skip_header=7, skip_footer=1)
+    # 返回完整数据（时间轴和S21 Real(U)值）
+    return data[:, 0], data[:, 1]  # 第一列是时间，第二列是S21 Real(U)
 
 
 def generate_b_scan(folder_path):
@@ -349,7 +448,7 @@ def generate_b_scan(folder_path):
 
 if __name__ == "__main__":
     # 替换为你的CSV文件所在文件夹路径
-    folder_path = r"C:\Users\unive\Desktop\KeySight_P9371B\0812_antena_hometest_30min"  # 示例路径
+    folder_path = r"C:\Users\unive\Desktop\no9_7.5m_-5dbm"  # 示例路径
     
     try:
         # 生成B-scan数据
@@ -369,31 +468,35 @@ if __name__ == "__main__":
         # 绘制并保存图像
         output_image = "b_scan_visualization.png"
         # 可以自定义时间范围，例如：
-        b_scan_stacked.plot(output_image, time_start=0, time_end=800, cmap_type='jet')  # 使用内置灰度映射
+        b_scan_stacked.plot(output_image, time_start=0, time_end=700)  # 使用内置灰度映射
         # 或使用默认参数自动计算时间范围
         # plot_b_scan(b_scan_data, output_image)
 
         # 对B-scan数据进行背景抑制
-        b_scan_processed = b_scan_data.copy().suppress_background(method='mean')
-        b_scan_processed.plot("b_scan_visualization_mean.png", time_start=0, time_end=800, cmap_type='jet')
-        b_scan_processed = b_scan_stacked.copy().suppress_background(method='mean')
-        b_scan_processed.plot("b_scan_visualization_mean_stacked.png", time_start=0, time_end=800, cmap_type='jet')
+        # b_scan_processed = b_scan_data.copy().suppress_background(method='mean')
+        # b_scan_processed.plot("b_scan_visualization_mean.png", time_start=0, time_end=700)
+        # b_scan_processed = b_scan_stacked.copy().suppress_background(method='mean')
+        # b_scan_processed.plot("b_scan_visualization_mean_stacked.png", time_start=0, time_end=700)
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='median')
-        b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=800, cmap_type='jet')
+        b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=700)
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='first_trace')
-        b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=800, cmap_type='jet')
+        b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=700)
         b_scan_processed = b_scan_stacked.copy().suppress_background(method='direct_wave')
-        b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=800, cmap_type='jet')
+        b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=700)
         
         # 示例2: 使用链式调用处理数据
         print("\n=== 使用链式调用处理数据 ===")
         # 链式调用示例：叠加 -> 背景抑制 -> AGC处理
         b_scan_result = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='mean').apply_agc(agc_type='mean')
-        b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=800, cmap_type='jet')
+        b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=700)
         
         # 另一个链式调用示例：叠加 -> 背景抑制(不同方法) -> AGC处理(不同参数)
         b_scan_result2 = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='direct_wave').apply_agc(agc_type='rms', agc_window=50)
-        b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=800, cmap_type='jet')
+        b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=700)
+        
+        # 示例3: 生成A-scan动态变化GIF动画
+        print("\n=== 生成A-scan动态变化GIF动画 ===")
+        b_scan_data.animate_a_scan("a_scan_animation.gif", fps=20, max_frames=120)
 
         print("处理完成！")
     except Exception as e:

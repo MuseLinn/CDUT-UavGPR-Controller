@@ -27,12 +27,17 @@ from PyQt6.QtWidgets import (
     QApplication
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
 def main():
     """主函数"""
     logger.debug("Starting VNA Controller GUI")
     
     app = QApplication(sys.argv)
+    
+    # 设置默认字体，解决字体发虚问题
+    font = QFont("Microsoft YaHei", 9)
+    app.setFont(font)
     
     # 设置高DPI适配，解决字体发虚问题 (PyQt6中移除了这些属性)
     # PyQt6默认启用了高DPI支持，无需手动设置
