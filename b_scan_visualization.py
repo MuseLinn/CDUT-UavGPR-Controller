@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from numpy.linalg import eig, inv
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.font_manager as fm
@@ -448,27 +449,169 @@ def generate_b_scan(folder_path):
 
 if __name__ == "__main__":
     # 替换为你的CSV文件所在文件夹路径
-    folder_path = r"C:\Users\unive\Desktop\no9_7.5m_-5dbm"  # 示例路径
+    folder_path = r"C:\Users\unive\Desktop\no9_1dbm"  # 示例路径
     
     try:
         # 生成B-scan数据
         print("正在处理CSV文件...")
         b_scan_data = generate_b_scan(folder_path)
-        
+
+        test_data = b_scan_data.copy().suppress_background(method='median')
+        plt.figure(figsize=(10, 6))
+        plt.imshow(test_data.data, cmap='gray', aspect='auto')
+        plt.xlabel('A-Scan Unit')
+        plt.ylabel('Time (ns)')
+        plt.title('B-Scan Grayscale Plot')
+        plt.colorbar()
+        plt.show()
+
+        # TCR目标杂波比 20lg_10((1/N_T * \sum (p,q)属于T |X(p,q)|^2)/(1/N_C * \sum (p,q)属于C |X(p,q)|^2))
+        import numpy as np
+
+
+        def calculate_TCR(b_scan):
+            """
+            计算探地雷达（GPR）B-Scan数据的目标杂波比（TCR）
+            计算公式参考文档：TCR(dB) = 20*log10(目标区域平均功率 / 杂波区域平均功率)
+
+            参数：
+            b_scan: np.array，形状为(501, 2383)的B-Scan矩阵，行对应0-700ns，列对应2383个A-Scan
+
+            返回：
+            tcr_db: float，TCR值（单位：dB）
+            """
+            # 1. 定义杂波区域（600-700ns）：根据行索引确定范围（501行对应0-700ns，行索引与时间的映射为：行索引 = (时间ns / 700ns) * 500，取整）
+            # 600ns对应的行索引：(600 / 700) * 500 ≈ 428.57 → 取429；700ns对应行索引500（因0ns对应行0）
+            clutter_row_start = 429  # 600ns对应的起始行索引
+            clutter_row_end = 500  # 700ns对应的结束行索引（含）
+            # 提取杂波区域数据：所有列（2383个A-Scan）的杂波行
+            clutter_region = b_scan[clutter_row_start:clutter_row_end + 1, :]
+
+            # 2. 定义目标区域：需根据实际目标位置调整（此处为示例，假设目标位于100-300ns，可根据实际数据修改行索引范围）
+            # 100ns对应行索引：(100 / 700)*500 ≈ 71.42 → 71；300ns对应行索引：(300/700)*500≈214.28→214
+            target_row_start = 71  # 目标起始行索引（示例，需替换为实际目标起始时间对应的行）
+            target_row_end = 214  # 目标结束行索引（示例，需替换为实际目标结束时间对应的行）
+            # 提取目标区域数据：所有列（2383个A-Scan）的目标行（若目标仅在部分列，可进一步限制列范围，如[:, 500:1500]）
+            target_region = b_scan[target_row_start:target_row_end + 1, :]
+
+            # 3. 计算目标区域平均功率（像素强度平方的均值）
+            # 文档定义：目标区域平均功率 = (1/N_T) * Σ|X(p,q)|²，其中N_T为目标区域像素数
+            target_power = np.mean(np.square(np.abs(target_region)))
+            N_T = target_region.size  # 目标区域总像素数（行数×列数）
+            # 验证：target_power也可通过 (np.sum(np.square(np.abs(target_region))) / N_T) 计算，结果一致
+
+            # 4. 计算杂波区域平均功率
+            # 文档定义：杂波区域平均功率 = (1/N_C) * Σ|X(p,q)|²，其中N_C为杂波区域像素数
+            clutter_power = np.mean(np.square(np.abs(clutter_region)))
+            N_C = clutter_region.size  # 杂波区域总像素数
+
+            # 5. 计算TCR（避免除以零，添加微小值）
+            epsilon = 1e-10  # 防止杂波功率为0导致计算错误
+            tcr_db = 20 * np.log10((target_power + epsilon) / (clutter_power + epsilon))
+
+            return tcr_db
+
+
+        # ------------------- 调用示例 -------------------
+        # 假设你的B-Scan数据已通过b_scan = np.array(s21_real).reshape(501, -1)生成
+        tcr_result = calculate_TCR(b_scan_data.copy().data)
+        print(f"TCR值：{tcr_result:.2f} dB")
+
+
+        # TODO: CHECK the algorithm after our project finished
+        # 1. time-index conversion
+        def time_to_point(time, start_time, end_time, ascan_points):
+            """
+            Calculate the mapping relationship between "time and row index"
+            Time unit: ns
+            """
+            time_range = end_time - start_time
+            point_converted = int(time / time_range * ascan_points)
+            print(f"time: {time}, mapped to point: {point_converted}")
+            return point_converted
+
+
+        # 2. slice to get the noise background(50-380ns)
+        noise_data = test_data.data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
+        noise_data.std()
+        print(f"noise std: {noise_data.std()}")
+        # get the target area data(signal + noise)
+        target_data = test_data.data
+
+        # 3. calculate the average power ratio of background noise
+        noise_mean = noise_data.mean()
+        print(f"noise mean: {noise_mean}")
+        # calculate the average power ratio of target area
+        target_mean = target_data.mean()
+        print(f"target mean: {target_mean}")
+
+        # 4. calculate the SNR
+        SNR_linear = target_mean / noise_mean
+        SNR_dB = 10 * np.log10(SNR_linear)
+        print(f"SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
+
+        # 取其中一道A-Scan的一段时间作为噪声信号，完整A-Scan数据作为信号，计算这个信噪比
+        a_scan_data = b_scan_data.data[:, 1300]
+        a_scan_noise = a_scan_data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
+        a_scan_signal = a_scan_data
+        SNR_linear = a_scan_signal.mean() / a_scan_noise.mean()
+        SNR_dB = 10 * np.log10(SNR_linear)
+        print(f"A-Scan SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
+
+        import numpy as np
+
+
+        def time_to_index(t_ns, total_ns=700.0, n_samples=501):
+            dt = total_ns / (n_samples - 1)
+            return int(np.floor(t_ns / dt))
+
+
+        # 假设 bscan 是一个 numpy 数组，shape = (n_traces, n_samples)
+        # 如果数据是 (time, traces) 转置一下： bscan = bscan.T
+        def compute_snr_global_windows(bscan):
+            n_traces, n_samples = bscan.shape
+            i_100 = time_to_index(100.0, total_ns=700.0, n_samples=n_samples)  # 71
+            # signal: 0..i_100, noise: i_100+1 .. end
+            signal = bscan[:, :i_100 + 1]  # shape (n_traces, n_sig_samples)
+            noise = bscan[:, i_100 + 1:]  # shape (n_traces, n_noise_samples)
+
+            # per-trace SNR (rms-based)
+            rms_signal = np.sqrt(np.mean(signal ** 2, axis=1))
+            rms_noise = np.sqrt(np.mean(noise ** 2, axis=1)) + 1e-12
+            snr_lin = rms_signal / rms_noise
+            snr_db_per_trace = 20.0 * np.log10(snr_lin)
+
+            # overall SNR (aggregate)
+            rms_signal_all = np.sqrt(np.mean(signal ** 2))
+            rms_noise_all = np.sqrt(np.mean(noise ** 2)) + 1e-12
+            snr_db_overall = 20.0 * np.log10(rms_signal_all / rms_noise_all)
+
+            return {
+                'snr_db_per_trace': snr_db_per_trace,
+                'snr_db_overall': snr_db_overall,
+                'i_100': i_100
+            }
+
+        data= b_scan_data.data.T
+        print(data.shape)
+        compute_snr_global_windows(data)
+        print(compute_snr_global_windows(data))
+        print(" Done.")
+
         # 示例1: 使用传统方式处理数据
-        print("=== 使用传统方式处理数据 ===")
+        # print("=== 使用传统方式处理数据 ===")
         # 可选：对B-scan数据进行叠加以提高信噪比
         # 将每3道相邻的A-scan叠加为一道
-        b_scan_stacked = b_scan_data.copy().stack_b_scan(stack_num=3)
+        # b_scan_stacked = b_scan_data.copy().stack_b_scan(stack_num=3)
 
         # 可选：应用带通滤波器以增强有效信号
         # 根据GPR参数设置滤波器，例如20MHz-170MHz数据，保留主要信号频段
         # b_scan_filtered = apply_bandpass_filter(b_scan_stacked, low_freq=30, high_freq=150, sampling_rate=200)
 
         # 绘制并保存图像
-        output_image = "b_scan_visualization.png"
-        # 可以自定义时间范围，例如：
-        b_scan_stacked.plot(output_image, time_start=0, time_end=700)  # 使用内置灰度映射
+        # output_image = "b_scan_visualization.png"
+        # # 可以自定义时间范围，例如：
+        # b_scan_stacked.plot(output_image, time_start=0, time_end=700)  # 使用内置灰度映射
         # 或使用默认参数自动计算时间范围
         # plot_b_scan(b_scan_data, output_image)
 
@@ -477,26 +620,26 @@ if __name__ == "__main__":
         # b_scan_processed.plot("b_scan_visualization_mean.png", time_start=0, time_end=700)
         # b_scan_processed = b_scan_stacked.copy().suppress_background(method='mean')
         # b_scan_processed.plot("b_scan_visualization_mean_stacked.png", time_start=0, time_end=700)
-        b_scan_processed = b_scan_stacked.copy().suppress_background(method='median')
-        b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=700)
-        b_scan_processed = b_scan_stacked.copy().suppress_background(method='first_trace')
-        b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=700)
-        b_scan_processed = b_scan_stacked.copy().suppress_background(method='direct_wave')
-        b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=700)
+        # b_scan_processed = b_scan_stacked.copy().suppress_background(method='median')
+        # b_scan_processed.plot("b_scan_visualization_median.png", time_start=0, time_end=700)
+        # b_scan_processed = b_scan_stacked.copy().suppress_background(method='first_trace')
+        # b_scan_processed.plot("b_scan_visualization_first_trace.png", time_start=0, time_end=700)
+        # b_scan_processed = b_scan_stacked.copy().suppress_background(method='direct_wave')
+        # b_scan_processed.plot("b_scan_visualization_direct_wave.png", time_start=0, time_end=700)
         
-        # 示例2: 使用链式调用处理数据
-        print("\n=== 使用链式调用处理数据 ===")
-        # 链式调用示例：叠加 -> 背景抑制 -> AGC处理
-        b_scan_result = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='mean').apply_agc(agc_type='mean')
-        b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=700)
-        
-        # 另一个链式调用示例：叠加 -> 背景抑制(不同方法) -> AGC处理(不同参数)
-        b_scan_result2 = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='direct_wave').apply_agc(agc_type='rms', agc_window=50)
-        b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=700)
-        
-        # 示例3: 生成A-scan动态变化GIF动画
-        print("\n=== 生成A-scan动态变化GIF动画 ===")
-        b_scan_data.animate_a_scan("a_scan_animation.gif", fps=20, max_frames=120)
+        # # 示例2: 使用链式调用处理数据
+        # print("\n=== 使用链式调用处理数据 ===")
+        # # 链式调用示例：叠加 -> 背景抑制 -> AGC处理
+        # b_scan_result = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='mean').apply_agc(agc_type='mean')
+        # b_scan_result.plot("b_scan_chain_processed.png", time_start=0, time_end=700)
+        #
+        # # 另一个链式调用示例：叠加 -> 背景抑制(不同方法) -> AGC处理(不同参数)
+        # b_scan_result2 = b_scan_data.copy().stack_b_scan(stack_num=3).suppress_background(method='direct_wave').apply_agc(agc_type='rms', agc_window=50)
+        # b_scan_result2.plot("b_scan_chain_processed2.png", time_start=0, time_end=700)
+        #
+        # # 示例3: 生成A-scan动态变化GIF动画
+        # print("\n=== 生成A-scan动态变化GIF动画 ===")
+        # b_scan_data.animate_a_scan("a_scan_animation.gif", fps=20, max_frames=120)
 
         print("处理完成！")
     except Exception as e:
