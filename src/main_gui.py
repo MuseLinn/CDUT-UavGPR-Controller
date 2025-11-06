@@ -13,10 +13,10 @@ Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 import sys
 # import os
 
-# 将src目录添加到Python路径中，以便可以导入vna_package模块
+# 将src目录添加到Python路径中，以便可以导入lib模块
 # sys.path.append(os.path.join(os.path.dirname(__file__))) # 以下已作为包导入
 
-# 从vna_package模块导入VNAController类和日志配置函数
+# 从lib模块导入VNAController类和日志配置函数
 from lib.logger_config import setup_logger
 from lib.fluent_window import VNAControllerGUI
 

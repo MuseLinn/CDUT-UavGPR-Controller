@@ -4,7 +4,7 @@ Author       : Linn
 Date         : 2025-07-26 16:05:07
 LastEditors  : Linn
 LastEditTime : 2025-07-29 09:30:00
-FilePath     : \\usbvna\\src\\vna_package\\vna_controller.py
+FilePath     : \\usbvna\\src\\lib\\vna_controller.py
 Description  : VNA Controller class for KeySight USB VNA control via PyVISA
 
 Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.

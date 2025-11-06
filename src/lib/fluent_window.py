@@ -4,7 +4,7 @@ Author       : Linn
 Date         : 2025-07-28 22:04:03
 LastEditors  : Linn
 LastEditTime : 2025-07-29 18:10:00
-FilePath     : \\usbvna\\src\\vna_package\\fluent_window.py
+FilePath     : \\usbvna\\src\\lib\\fluent_window.py
 Description  : Functions and Objects forked from PyQt6, FluentWindow and vna_controller
 2025-07-29-18:30 FIXED: point measurement method refresh-hold response needs to be fixed
                     开启点测时，切换至其他模式后切换回来直接点击采集会crush，但停止再开始正常——信号绑定与线程问题

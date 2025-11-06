@@ -4,7 +4,7 @@ Author       : Linn
 Date         : 2025-07-28 17:30:00
 LastEditors  : Linn
 LastEditTime : 2025-07-28 17:30:00
-FilePath     : \\usbvna\\src\\vna_package\\logger_config.py
+FilePath     : \\usbvna\\src\\lib\\logger_config.py
 Description  : 日志配置模块，提供统一的日志配置功能
 
 Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.

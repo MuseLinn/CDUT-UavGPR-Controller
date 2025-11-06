@@ -6,9 +6,9 @@
 
 ### 1.1 核心组件
 
-- **[vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/vna_controller.py)** - 设备控制核心模块，封装所有与 VNA 通信的 SCPI 命令
-- **[fluent_window.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py)** - GUI 界面实现模块，包含所有界面元素和用户交互逻辑
-- **[logger_config.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/logger_config.py)** - 日志配置模块，提供统一的日志记录功能
+- **[vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/vna_controller.py)** - 设备控制核心模块，封装所有与 VNA 通信的 SCPI 命令
+- **[fluent_window.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py)** - GUI 界面实现模块，包含所有界面元素和用户交互逻辑
+- **[logger_config.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/logger_config.py)** - 日志配置模块，提供统一的日志记录功能
 - **[main_gui.py](file:///C:/Users/unive/Desktop/usbvna/src/main_gui.py)** - GUI 程序入口点
 - **[main_nogui.py](file:///C:/Users/unive/Desktop/usbvna/src/main_nogui.py)** - 命令行程序入口点
 
@@ -16,11 +16,13 @@
 
 ```
 src/
-├── vna_package/                # VNA 控制模块
+├── lib/                        # VNA 控制模块
 │   ├── __init__.py
 │   ├── logger_config.py        # 日志配置模块
 │   ├── vna_controller.py       # VNA 控制器类
 │   └── fluent_window.py        # GUI 实现
+├── config/                     # 配置文件
+│   └── config.json             # 配置文件
 ├── main_gui.py                 # GUI 主入口
 ├── main_nogui.py               # CLI 主入口
 └── logs/                       # 日志文件目录
@@ -111,11 +113,11 @@ def on_mode_changed(self):
 
 ### 4.1 核心控制功能
 
-核心控制功能位于 [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/vna_controller.py) 文件中，该文件实现了 [VNAController](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/vna_controller.py#L19-L313) 类，封装了与 VNA 设备通信的所有方法。
+核心控制功能位于 [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/vna_controller.py) 文件中，该文件实现了 [VNAController](file:///C:/Users/unive/Desktop/usbvna/src/lib/vna_controller.py#L19-L313) 类，封装了与 VNA 设备通信的所有方法。
 
 ### 4.2 添加新的控制命令
 
-在 [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/vna_controller.py) 文件中添加新的方法：
+在 [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/vna_controller.py) 文件中添加新的方法：
 
 ```python
 def new_command(self, parameter):
@@ -134,7 +136,7 @@ def new_command(self, parameter):
 
 ### 4.3 在界面中使用新功能
 
-在 [fluent_window.py](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py) 中通过 [self.vna_controller](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L299-L299) 对象调用新添加的方法：
+在 [fluent_window.py](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py) 中通过 [self.vna_controller](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L299-L299) 对象调用新添加的方法：
 
 ```python
 # 在按钮点击事件处理方法中
@@ -149,7 +151,7 @@ def on_new_button_clicked(self):
 
 ### 4.4 功能绑定
 
-在 [setup_connections()](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L623-L669) 方法中将界面控件与功能方法进行绑定：
+在 [setup_connections()](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L623-L669) 方法中将界面控件与功能方法进行绑定：
 
 ```python
 def setup_connections(self):
@@ -161,13 +163,13 @@ def setup_connections(self):
 
 对于耗时操作，需要使用工作线程避免阻塞 GUI。项目中已经实现了几种工作线程：
 
-- [DataDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L46-L77) - 定次采集工作线程
-- [ContinuousDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L80-L116) - 连续采集工作线程
-- [PointDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L119-L175) - 点测采集工作线程
+- [DataDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L46-L77) - 定次采集工作线程
+- [ContinuousDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L80-L116) - 连续采集工作线程
+- [PointDumpWorker](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L119-L175) - 点测采集工作线程
 
 ### 5.1 添加新的工作线程
 
-创建新的工作线程类继承自 [QThread](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/fluent_window.py#L25-L25)：
+创建新的工作线程类继承自 [QThread](file:///C:/Users/unive/Desktop/usbvna/src/lib/fluent_window.py#L25-L25)：
 
 ```python
 class NewWorker(QThread):
@@ -218,7 +220,7 @@ logger.error("错误信息")
 
 ### 7.2 功能开发注意事项
 
-1. 所有与设备的交互都应通过 [VNAController](file:///C:/Users/unive/Desktop/usbvna/src/vna_package/vna_controller.py#L19-L313) 类进行
+1. 所有与设备的交互都应通过 [VNAController](file:///C:/Users/unive/Desktop/usbvna/src/lib/vna_controller.py#L19-L313) 类进行
 2. 耗时操作必须使用工作线程，避免阻塞 GUI
 3. 添加适当的异常处理和错误提示
 4. 为新功能添加日志记录

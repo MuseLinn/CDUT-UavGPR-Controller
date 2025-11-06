@@ -44,11 +44,13 @@ pip install scipy
 
 ```
 src/
-├── vna_package/                # VNA控制模块
+├── lib/                        # VNA控制模块
 │   ├── __init__.py
 │   ├── logger_config.py        # 日志配置模块
 │   ├── vna_controller.py       # VNA控制器类
 │   └── fluent_window.py        # GUI界面实现
+├── config/                     # 配置文件
+│   └── config.json             # 配置文件
 ├── main_gui.py                 # GUI主程序入口
 ├── main_nogui.py               # 命令行主程序入口
 └── logs/                       # 日志文件目录
