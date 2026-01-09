@@ -1,8 +1,10 @@
 # USB-VNA (P9731B) Control Program
 
+English | [简体中文](README_zh.md)
+
 ## Project Overview
 
-This project provides Python scripts for controlling Keysight USB Vector Network Analyzers (VNA), utilizing the PyVISA library for device connection, control, and data acquisition. It is compatible with the P973X series USB-VNA devices and supports essential measurement workflows.
+This project provides Python scripts for controlling Keysight USB Vector Network Analyzers (VNA), utilizing the PyVISA library for device connection, control, and data acquisition. It is compatible with the P973X series USB-VNA devices and supports essential measurement workflows. The software also integrates RTK high-precision positioning for geolocation-aware data acquisition, primarily designed for Ground Penetrating Radar (GPR) applications.
 
 References:
 
@@ -30,6 +32,7 @@ The project uses a Conda environment in the project directory, which includes al
 - PyQt6
 - PyQt6-Fluent-Widgets
 - Keysight Network Analyzers Python Instrument Drivers (V2.0.2)
+- PySerial (for RTK GPS module communication)
 
 The driver package is included in the archive [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip] and should be installed within the Conda environment.
 
@@ -48,11 +51,18 @@ src/
 │   ├── __init__.py
 │   ├── logger_config.py        # Logging configuration module
 │   ├── vna_controller.py       # VNA controller class
-│   └── fluent_window.py        # GUI implementation
+│   ├── fluent_window.py        # GUI implementation
+│   ├── rtk_module.py           # RTK positioning module
+│   └── rtk_module_bak.py       # RTK positioning module backup
 ├── config/                     # Configuration files
 │   └── config.json             # Configuration file
 ├── main_gui.py                 # GUI main entry point
 ├── main_nogui.py               # CLI main entry point
+├── HWT905_ttl.py               # HWT905 gyroscope interface (TTL communication)
+├── 参考_rtk.py                  # RTK module reference code
+├── GPR_Processsing_Script/     # GPR data processing scripts
+│   ├── b_scan_visualization.py # B-scan visualization script
+│   └── [DEPRECATED]...         # Deprecated scripts
 └── logs/                       # Log files directory
 ```
 
@@ -79,7 +89,14 @@ The GUI is built with PyQt6-Fluent-Widgets, providing an intuitive interface wit
    - Retrieve device ID information
    - View and switch device directories
 
-2. **Data Acquisition Configuration**
+2. **RTK Positioning Module**
+   - Real-time GPS position display (latitude, longitude, altitude)
+   - Satellite count and signal quality indicators
+   - Positioning type display (RTK Fixed/Floating, Single Point, etc.)
+   - Configurable storage frequency (1Hz-20Hz)
+   - Data export to CSV format
+
+3. **Data Acquisition Configuration**
    - Data type selection (CSV, SDP, SNP)
    - Data scope selection (Trace, Displayed, Channel, Auto)
    - Data format selection (Displayed, RI, MA, DB)
@@ -87,7 +104,7 @@ The GUI is built with PyQt6-Fluent-Widgets, providing an intuitive interface wit
    - File prefix setting
    - Acquisition interval setting (0.01s-10s)
 
-3. **Three Acquisition Modes**
+4. **Three Acquisition Modes**
 
    **Point Measurement Mode**
    - Single acquisition: each click collects a specified amount of data, one set per click
@@ -119,12 +136,26 @@ This class provides basic methods for controlling the USB VNA device:
 10. `cdir(path)` - Change to the specified directory
 11. `data_dump(filename, data_type, scope, data_format, selector)` - Dump data to file
 
+### RTK Module Integration
+
+The RTK positioning module provides real-time GPS data integration:
+
+1. `__init__()` - Initialize RTK module with specified port and baudrate
+2. `connect()` - Establish connection to RTK GPS module
+3. `disconnect()` - Disconnect from RTK GPS module
+4. `start()` - Start reading RTK data
+5. `stop()` - Stop reading RTK data
+6. `set_storage_frequency()` - Set data storage frequency
+7. `set_data_file()` - Specify output file for RTK data
+8. `_parse_nmea_data()` - Parse NMEA protocol data (GGA, RMC, GSA)
+
 ### Logging
 
 The program uses the logging module to record operation logs, saved under `src/logs/`:
 - vna_controller.log - VNA controller module logs
 - vna_gui.log - GUI logs
 - vna_main.log - CLI main program logs
+- vna_window.log - Window module logs
 
 Log levels include DEBUG, INFO, WARNING, ERROR, and CRITICAL.
 
@@ -139,6 +170,7 @@ Log levels include DEBUG, INFO, WARNING, ERROR, and CRITICAL.
 7. The VNA front panel should enable HiSLIP and Drive Access for remote connection, as shown below:
 ![Remote_Interface.png](archive/Remote_Interface.png)
 ![Interface_solved.png](archive/Interface_solved.png)
+8. For RTK GPS functionality, ensure the RTK module is connected via serial port (typically COM11).
 
 ## Troubleshooting
 
@@ -157,4 +189,25 @@ Log levels include DEBUG, INFO, WARNING, ERROR, and CRITICAL.
 - Check screen resolution and scaling settings
 - If the interface appears abnormal, try resetting GUI settings
 
-```
+### RTK GPS Issues
+- Verify serial port connection and permissions
+- Check baudrate settings (typically 115200)
+- Ensure RTK module is powered and receiving satellite signals
+- Check if the correct COM port is selected in the GUI
+
+## Development Guidelines
+
+### Getting Started for New Team Members
+1. Review the [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for detailed project architecture and development practices
+2. Familiarize yourself with the project structure and key modules
+3. Set up your development environment following the requirements section
+4. Test the basic functionality before making changes
+5. Follow the code style and documentation standards used throughout the project
+
+### Key Components to Understand
+- [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/vna_controller.py): Core device communication and SCPI command handling
+- [fluent_window.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/fluent_window.py): GUI implementation with multithreaded data acquisition
+- [rtk_module.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/rtk_module.py): GPS/RTK positioning module with NMEA parsing
+- [logger_config.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/logger_config.py): Centralized logging configuration
+
+For detailed development and maintenance instructions, please refer to the [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) document.

@@ -1,8 +1,10 @@
 # USB-VNA (P9731B) 控制程序
 
+[English](README.md) | 简体中文
+
 ## 项目简介
 
-本项目是用于控制 Keysight USB 矢量网络分析仪(VNA)的 Python 脚本，通过 PyVISA 库实现对设备的连接、控制和数据采集功能。适用于 P973X 系列 USB-VNA 设备，主要用于探地雷达(GPR)数据采集。
+本项目是用于控制 Keysight USB 矢量网络分析仪(VNA)的 Python 脚本，通过 PyVISA 库实现对设备的连接、控制和数据采集功能。适用于 P973X 系列 USB-VNA 设备，主要用于探地雷达(GPR)数据采集。软件还集成了RTK高精度定位系统，实现基于地理位置的数据采集，专为探地雷达应用设计。
 
 References: 
 
@@ -30,8 +32,9 @@ References:
 - PyQt6
 - PyQt6-Fluent-Widgets
 - Keysight Network Analyzers Python Instrument Drivers (V2.0.2)
+- PySerial (用于RTK GPS模块通信)
 
-驱动程序已包含在项目中的压缩包 [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip](keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip) 内，并已在 Conda 环境中安装完毕。
+驱动程序已包含在项目中的压缩包 [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip](archive/keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip) 内，并已在 Conda 环境中安装完毕。
 
 ### 可选依赖（用于数据可视化等）
 ```bash
@@ -48,11 +51,18 @@ src/
 │   ├── __init__.py
 │   ├── logger_config.py        # 日志配置模块
 │   ├── vna_controller.py       # VNA控制器类
-│   └── fluent_window.py        # GUI界面实现
+│   ├── fluent_window.py        # GUI界面实现
+│   ├── rtk_module.py           # RTK定位模块
+│   └── rtk_module_bak.py       # RTK定位模块备份
 ├── config/                     # 配置文件
 │   └── config.json             # 配置文件
 ├── main_gui.py                 # GUI主程序入口
 ├── main_nogui.py               # 命令行主程序入口
+├── HWT905_ttl.py               # HWT905陀螺仪接口(TTL通信)
+├── 参考_rtk.py                  # RTK模块参考代码
+├── GPR_Processsing_Script/     # GPR数据处理脚本
+│   ├── b_scan_visualization.py # B扫描可视化脚本
+│   └── [DEPRECATED]...         # 已废弃脚本
 └── logs/                       # 日志文件目录
 ```
 
@@ -79,7 +89,14 @@ GUI界面基于PyQt6-Fluent-Widgets开发，提供直观易用的操作界面，
    - 获取设备ID信息
    - 查看和切换设备目录
 
-2. **数据采集配置**
+2. **RTK定位模块**
+   - 实时GPS位置显示（纬度、经度、海拔）
+   - 卫星数和信号质量指示
+   - 定位类型显示（RTK固定解/浮点解、单点定位等）
+   - 可配置存储频率（1Hz-20Hz）
+   - 数据导出为CSV格式
+
+3. **数据采集配置**
    - 数据类型选择（CSV、SDP、SNP）
    - 数据范围设置（Trace、Displayed、Channel、Auto）
    - 数据格式选择（Displayed、RI、MA、DB）
@@ -87,7 +104,7 @@ GUI界面基于PyQt6-Fluent-Widgets开发，提供直观易用的操作界面，
    - 文件前缀设置
    - 采集间隔设置（0.01s-10s）
 
-3. **三种采集模式**
+4. **三种采集模式**
 
    **点测模式**
    - 单次采集：每次点击采集指定数量的数据，每点击一次为一组
@@ -118,11 +135,25 @@ GUI界面基于PyQt6-Fluent-Widgets开发，提供直观易用的操作界面，
 10. `cdir(path)` - 切换到指定目录
 11. `data_dump(filename, data_type, scope, data_format, selector)` - 数据转储到文件
 
+### RTK模块集成
+
+RTK定位模块提供了实时GPS数据集成功能：
+
+1. `__init__()` - 使用指定端口和波特率初始化RTK模块
+2. `connect()` - 建立与RTK GPS模块的连接
+3. `disconnect()` - 断开与RTK GPS模块的连接
+4. `start()` - 开始读取RTK数据
+5. `stop()` - 停止读取RTK数据
+6. `set_storage_frequency()` - 设置数据存储频率
+7. `set_data_file()` - 指定RTK数据的输出文件
+8. `_parse_nmea_data()` - 解析NMEA协议数据（GGA、RMC、GSA）
+
 ### 日志记录
 程序使用 logging 模块记录操作日志，日志文件保存在 `src/logs/` 目录下：
 - vna_controller.log - VNA 控制器模块日志
 - vna_gui.log - GUI界面日志
 - vna_main.log - 命令行主程序日志
+- vna_window.log - 窗口模块日志
 
 日志级别包括 DEBUG、INFO、WARNING、ERROR 和 CRITICAL。
 
@@ -137,6 +168,7 @@ GUI界面基于PyQt6-Fluent-Widgets开发，提供直观易用的操作界面，
 7. 设备需要在VNA前面板开启HiSLIP以及Drive Access以连接访问，如下图所示：
 ![Remote_Interface.png](archive/Remote_Interface.png)
 ![Interface_solved.png](archive/Interface_solved.png)
+8. 对于RTK GPS功能，请确保RTK模块通过串口正确连接（通常为COM11）
 
 ## 故障排除
 
@@ -154,3 +186,26 @@ GUI界面基于PyQt6-Fluent-Widgets开发，提供直观易用的操作界面，
 - 确保已安装 PyQt6 和 PyQt6-Fluent-Widgets
 - 检查屏幕分辨率和缩放设置
 - 如出现界面显示异常，尝试重置界面设置
+
+### RTK GPS问题
+- 验证串口连接和权限
+- 检查波特率设置（通常为115200）
+- 确保RTK模块已通电并接收到卫星信号
+- 检查GUI中是否选择了正确的COM端口
+
+## 开发指南
+
+### 新团队成员入门指南
+1. 仔细阅读 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) 文档，了解项目架构和开发实践
+2. 熟悉项目结构和核心模块
+3. 按照需求部分设置您的开发环境
+4. 在做更改之前先测试基本功能
+5. 遵循项目中使用的代码风格和文档标准
+
+### 需要了解的关键组件
+- [vna_controller.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/vna_controller.py): 核心设备通信和SCPI命令处理
+- [fluent_window.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/fluent_window.py): GUI实现，包含多线程数据采集
+- [rtk_module.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/rtk_module.py): GPS/RTK定位模块，包含NMEA协议解析
+- [logger_config.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/logger_config.py): 集中化日志配置
+
+有关详细的开发和维护说明，请参阅 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) 文档。
