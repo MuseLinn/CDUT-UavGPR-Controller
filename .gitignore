@@ -1,6 +1,7 @@
 ##ignore this file##
 /target/
 /.idea/
+/.trae/
 /.settings/
 /.vscode/
 /bin/
@@ -8,7 +9,9 @@
 /src/logs
 /src/build
 /src/dist
+/src/ROS_RTK_参考
 /tests
+/test_data
 
 /*.png
 /src/main_nogui.py
