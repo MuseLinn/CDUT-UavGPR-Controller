@@ -8,27 +8,19 @@
 # 导入必要的库
 import pyvisa as visa
 import numpy as np
-import matplotlib.pyplot as plt
 import time
 import csv
-import threading
-import queue
 
-# 尝试导入pyqtgraph和Qt，用于高效的实时B-Scan绘制
-try:
-    import pyqtgraph as pg
-    from pyqtgraph.Qt import QtCore, QtGui
-    import sys
-    PYQTGRAPH_AVAILABLE = True
-except ImportError as e:
-    print(f"pyqtgraph导入失败: {e}")
-    PYQTGRAPH_AVAILABLE = False
+# 导入pyqtgraph和Qt，用于高效的实时B-Scan绘制
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+import sys
 
-# 配置matplotlib支持中文显示
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+# 设置pyqtgraph全局主题为浅色
+pg.setConfigOption('background', 'w')  # 设置背景为白色
+pg.setConfigOption('foreground', 'k')  # 设置前景（文字等）为黑色
 
-DEBUG = True
+DEBUG = False  # 简化调试信息，仅保留关键信息
 def debug_print(*args, **kwargs):
     if DEBUG:
         print("[DEBUG]", *args, **kwargs)
@@ -167,7 +159,7 @@ class SimpleVNAController:
 # ## 2. 数据可视化工具
 class SimpleVisualizer:
     """
-    简化版数据可视化类，仅提供A-Scan时域波形绘制功能
+    简化版数据可视化类，提供A-Scan时域波形绘制和实时B-Scan绘制功能
     """
     @staticmethod
     def plot_ascan_time_domain(data, time_range_ns=900, title='A-Scan时域波形'):
@@ -180,21 +172,283 @@ class SimpleVisualizer:
         # 创建时间数组，从0到time_range_ns均匀分布
         time_array = np.linspace(0, time_range_ns, len(data))
         
-        # 创建画布，绘制时域波形
-        fig, ax = plt.subplots(figsize=(12, 6))
+        # 创建pyqtgraph窗口
+        win = pg.GraphicsLayoutWidget(show=True, title=title)
+        win.resize(800, 600)
         
-        # 时域波形图
-        ax.plot(time_array, data, 'b-', linewidth=1.5)
-        ax.set_xlabel('时间 (ns)')
-        ax.set_ylabel('幅度')
-        ax.set_title(title)
-        ax.grid(True, alpha=0.3)
+        # 添加绘图项
+        plot = win.addPlot(title="时域波形")
+        plot.plot(time_array, data, pen='b', lineWidth=1.5)
         
-        # 设置X轴范围
-        ax.set_xlim(0, time_range_ns)
+        # 设置坐标轴
+        plot.setLabel('bottom', '时间', 'ns')
+        plot.setLabel('left', '幅度')
+        plot.setXRange(0, time_range_ns)
+        plot.grid(True)
+
+class AcquisitionThread(QtCore.QThread):
+    """
+    数据采集线程，负责在后台读取A-Scan数据
+    """
+    # 定义信号
+    new_data = QtCore.pyqtSignal(np.ndarray)  # 新数据信号
+    progress = QtCore.pyqtSignal(int, int)  # 进度信号 (当前, 总数)
+    finished = QtCore.pyqtSignal()  # 完成信号
+    
+    def __init__(self, vna_controller, num_traces=500, acquisition_period_ms=80):
+        """
+        初始化采集线程
+        参数：
+        - vna_controller: VNA控制器实例
+        - num_traces: 采集的A-Scan道数
+        - acquisition_period_ms: 采集周期（毫秒）
+        """
+        super().__init__()
+        self.vna_controller = vna_controller
+        self.num_traces = num_traces
+        self.acquisition_period_ms = acquisition_period_ms
+        self.is_running = False
+    
+    def run(self):
+        """线程运行函数"""
+        self.is_running = True
         
-        plt.tight_layout()
-        plt.show()
+        for i in range(self.num_traces):
+            if not self.is_running:
+                break
+            
+            # 读取A-Scan数据
+            start_time = time.time()
+            ascan_data = self.vna_controller.read_ascan_data()
+            read_time = time.time() - start_time
+            
+            if ascan_data is not None:
+                # 发送新数据信号
+                self.new_data.emit(ascan_data)
+                
+                # 发送进度信号
+                if (i + 1) % 50 == 0:
+                    self.progress.emit(i + 1, self.num_traces)
+            
+            # 控制采集周期
+            elapsed = time.time() - start_time
+            wait_time = self.acquisition_period_ms / 1000 - elapsed
+            if wait_time > 0:
+                time.sleep(wait_time)
+        
+        # 发送完成信号
+        self.finished.emit()
+    
+    def stop(self):
+        """停止采集"""
+        self.is_running = False
+
+class RealTimeBScanPlotter:
+    """
+    实时B-Scan绘制类，用于以指定周期采集A-Scan并实时绘制B-Scan
+    使用多线程分离数据采集和GUI绘制，确保窗口响应
+    """
+    def __init__(self, vna_controller, num_traces=500, acquisition_period_ms=80):
+        """
+        初始化实时B-Scan绘制器
+        参数：
+        - vna_controller: VNA控制器实例
+        - num_traces: 采集的A-Scan道数
+        - acquisition_period_ms: 采集周期（毫秒）
+        """
+        self.vna_controller = vna_controller
+        self.num_traces = num_traces
+        self.acquisition_period_ms = acquisition_period_ms
+        self.bscan_data = []
+        self.is_running = False
+        
+        # 创建pyqtgraph窗口
+        self.win = pg.GraphicsLayoutWidget(show=True, title=f'实时B-Scan图像 ({num_traces}道)')
+        self.win.resize(1200, 800)
+        
+        # 添加绘图区域
+        self.plot = self.win.addPlot(title=f'实时B-Scan图像')
+        
+        # 设置坐标轴标签
+        self.plot.setLabel('bottom', '道数')
+        self.plot.setLabel('left', '采样点')
+        
+        # 创建图像项
+        self.img = pg.ImageItem(axisOrder='row-major')
+        self.plot.addItem(self.img)
+        
+        # 设置坐标轴方向，Y轴从上往下表示深度增加（时深关系）
+        self.plot.invertY(True)
+        
+        # 使用matplotlib的seismic颜色映射
+        cmap = pg.colormap.getFromMatplotlib('seismic')
+        
+        # 创建颜色条，确保颜色映射和标签正确
+        self.cbar = pg.ColorBarItem(
+            values=(0, 1),  # 初始范围，将在数据更新时调整
+            width=30,       # 颜色条宽度
+            colorMap=cmap,  # 使用seismic颜色映射
+            label='幅度'
+        )
+        # 正确关联颜色条与图像项
+        self.cbar.setImageItem(self.img)
+        # 将颜色条添加到布局中
+        self.win.addItem(self.cbar, row=0, col=1)
+        
+        # 禁用自动范围调整，避免图像闪烁
+        self.plot.disableAutoRange()
+        
+        # 连接关闭事件
+        self.win.closeEvent = self.close_event
+        
+        # 创建采集线程
+        self.acquisition_thread = AcquisitionThread(
+            vna_controller, 
+            num_traces=num_traces, 
+            acquisition_period_ms=acquisition_period_ms
+        )
+        
+        # 连接信号槽
+        self.acquisition_thread.new_data.connect(self.update_bscan)
+        self.acquisition_thread.progress.connect(self.on_progress)
+        self.acquisition_thread.finished.connect(self.on_finished)
+        
+    def close_event(self, event):
+        """窗口关闭事件处理"""
+        self.stop()
+        event.accept()
+    
+    def on_progress(self, current, total):
+        """进度更新处理"""
+        print(f"  已完成 {current}/{total} 道")
+    
+    def update_bscan(self, ascan_data):
+        """
+        更新B-Scan图像
+        参数：
+        - ascan_data: 新的A-Scan数据
+        """
+        # 添加到B-Scan数据
+        self.bscan_data.append(ascan_data)
+        
+        # 转换为numpy数组，形状为 (num_traces, num_samples)
+        bscan_array = np.array(self.bscan_data)
+        
+        # 转置数据，使其形状变为 (num_samples, num_traces)
+        # 这样Y轴显示采样点，X轴显示道数
+        bscan_array_transposed = bscan_array.T
+        
+        # 更新图像数据，确保显示正确
+        self.img.setImage(bscan_array_transposed, axisOrder='row-major')
+        
+        # 调整图像大小以匹配当前数据
+        self.img.setRect(QtCore.QRectF(0, 0, bscan_array_transposed.shape[1], bscan_array_transposed.shape[0]))
+        
+        # 仅更新颜色条范围，避免冗余的颜色映射设置
+        min_val = np.min(bscan_array_transposed)
+        max_val = np.max(bscan_array_transposed)
+        self.cbar.setLevels((min_val, max_val))
+        
+        # 更新坐标轴范围，确保X轴显示道数，Y轴显示采样点
+        self.plot.setXRange(0, bscan_array_transposed.shape[1])
+        self.plot.setYRange(0, bscan_array_transposed.shape[0])
+    
+    def on_finished(self):
+        """采集完成处理"""
+        self.is_running = False
+        
+        # 计算性能指标
+        total_time = time.time() - self.start_total
+        read_rate = len(self.bscan_data) / total_time if total_time > 0 else 0
+        
+        print(f"\n=== 实时B-Scan采集测试结果 ===")
+        print(f"总道数: {self.num_traces}")
+        print(f"成功道数: {len(self.bscan_data)}")
+        print(f"总耗时: {total_time:.3f}秒")
+        print(f"读取速率: {read_rate:.2f}道/秒")
+        print(f"期望速率: {1000/self.acquisition_period_ms:.2f}道/秒")
+        print(f"是否满足期望速率: {'是' if read_rate >= 1000/self.acquisition_period_ms else '否'}")
+        print("=== 实时B-Scan测试结束 ===")
+        
+        # 保存B-Scan数据和图像
+        self.save_bscan()
+        
+        # 保存结果
+        self.results = {
+            "num_traces": self.num_traces,
+            "success_traces": len(self.bscan_data),
+            "total_time": total_time,
+            "read_rate": read_rate,
+            "bscan_data": self.bscan_data
+        }
+    
+    def acquire_and_plot(self):
+        """
+        开始采集A-Scan并实时绘制B-Scan
+        """
+        self.is_running = True
+        
+        print(f"\n=== 开始实时并行B-Scan绘制采集测试 ({self.num_traces}道) ===")
+        print(f"采集周期: {self.acquisition_period_ms}ms")
+        
+        # 记录开始时间
+        self.start_total = time.time()
+        print(f"开始时间: {self.start_total:.3f}秒")
+        
+        # 启动采集线程
+        self.acquisition_thread.start()
+        
+        # 返回None，结果将通过回调获取
+        return None
+    
+    def stop(self):
+        """停止采集和绘制"""
+        self.is_running = False
+        if self.acquisition_thread.isRunning():
+            self.acquisition_thread.stop()
+            self.acquisition_thread.wait()
+    
+    def get_results(self):
+        """获取测试结果"""
+        return getattr(self, 'results', None)
+    
+    def save_bscan(self):
+        """
+        保存B-Scan数据和图像
+        """
+        try:
+            if len(self.bscan_data) > 0:
+                # 转换为numpy数组，形状为 (num_traces, num_samples)
+                bscan_array = np.array(self.bscan_data)
+                
+                # 保存原始数据到npy文件
+                data_filename = f"./real_time_bscan_{self.num_traces}道.npy"
+                np.save(data_filename, bscan_array)
+                print(f"实时B-Scan数据已保存到: {data_filename}")
+                
+                # 使用matplotlib保存图像（确保能正常保存）
+                import matplotlib.pyplot as plt
+                # 配置matplotlib支持中文显示
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+                
+                plt.figure(figsize=(12, 8))
+                # 转置数据，确保X轴为道数，Y轴为采样点
+                # origin='upper'表示Y轴从上往下（时深关系）
+                plt.imshow(bscan_array.T, aspect='auto', cmap='seismic', 
+                          origin='upper', interpolation='nearest')
+                plt.colorbar(label='幅度')
+                plt.title(f'实时B-Scan图像 ({self.num_traces}道)')
+                plt.xlabel('道数')
+                plt.ylabel('采样点')
+                
+                img_filename = f"./real_time_bscan_{self.num_traces}道.png"
+                plt.savefig(img_filename, dpi=300, bbox_inches='tight')
+                plt.close()
+                print(f"实时B-Scan图像已保存到: {img_filename}")
+                
+        except Exception as e:
+            print(f"保存B-Scan失败: {e}")
 
 
 # ## 3. 数据验证工具
@@ -314,6 +568,7 @@ class PerformanceTester:
         
         debug_print(f"\n=== 开始多轮A-Scan读取测试 ({rounds}轮) ===")
         start_total = time.time()
+        debug_print(f"开始时间: {start_total:.3f}秒")
         
         for i in range(rounds):
             round_start = time.time()
@@ -334,6 +589,7 @@ class PerformanceTester:
             if (i + 1) % 10 == 0:
                 debug_print(f"  已完成 {i + 1}/{rounds} 轮")
         
+        debug_print(f"结束时间: {time.time():.3f}秒")
         results["total_time"] = time.time() - start_total
         
         if results["success_rounds"] > 0:
@@ -411,22 +667,20 @@ class PerformanceTester:
         debug_print("=== 存储测试结束 ===")
         
         return results
-    
+
     @staticmethod
-    def test_bscan_real_time(vna_controller, rounds=50):
+    def test_continuous_bscan(vna_controller, num_traces=500):
         """
-        测试边读取A-Scan边绘制B-Scan的性能
+        测试连续采集多道A-Scan并一次性绘制B-Scan
         参数：
         - vna_controller: VNA控制器实例
-        - rounds: 测试轮数
+        - num_traces: 采集的A-Scan道数
         返回：
         - 测试结果字典
         """
-        import matplotlib.animation as animation
-        
         results = {
-            "rounds": rounds,
-            "success_rounds": 0,
+            "num_traces": num_traces,
+            "success_traces": 0,
             "read_times": [],
             "total_time": 0,
             "avg_read_time": 0,
@@ -436,248 +690,103 @@ class PerformanceTester:
             "bscan_data": []
         }
         
-        debug_print(f"\n=== 开始边读取边绘制B-Scan测试 ({rounds}轮) ===")
-        
-        # 初始化B-Scan图像
-        fig, ax = plt.subplots(figsize=(10, 8))
-        im = None
+        print(f"\n=== 开始连续B-Scan采集测试 ({num_traces}道) ===")
         
         start_total = time.time()
         
-        for i in range(rounds):
-            # 读取A-Scan数据
-            round_start = time.time()
+        for i in range(num_traces):
+            trace_start = time.time()
             ascan_data = vna_controller.read_ascan_data()
-            round_end = time.time()
+            trace_end = time.time()
             
             if ascan_data is not None:
-                read_time = round_end - round_start
+                read_time = trace_end - trace_start
                 results["read_times"].append(read_time)
-                results["success_rounds"] += 1
+                results["success_traces"] += 1
                 results["bscan_data"].append(ascan_data)
                 
                 if read_time > results["max_read_time"]:
                     results["max_read_time"] = read_time
                 if read_time < results["min_read_time"]:
                     results["min_read_time"] = read_time
-                
-                # 更新B-Scan图像
-                bscan_array = np.array(results["bscan_data"]).T
-                if im is None:
-                    # 第一次绘制
-                    im = ax.imshow(bscan_array, aspect='auto', cmap='seismic', 
-                                  origin='lower', interpolation='nearest')
-                    plt.colorbar(im)
-                    ax.set_title('实时B-Scan图像')
-                    ax.set_xlabel('道数')
-                    ax.set_ylabel('采样点')
-                else:
-                    # 更新图像数据
-                    im.set_data(bscan_array)
-                    im.set_extent([0, bscan_array.shape[1]-1, 0, bscan_array.shape[0]-1])
-                
-                # 刷新图像
-                plt.pause(0.001)
             
-            # 每10轮打印一次进度
-            if (i + 1) % 10 == 0:
-                debug_print(f"  已完成 {i + 1}/{rounds} 轮")
+            # 每50道打印一次进度
+            if (i + 1) % 50 == 0:
+                print(f"  已完成 {i + 1}/{num_traces} 道")
         
         results["total_time"] = time.time() - start_total
         
-        if results["success_rounds"] > 0:
+        if results["success_traces"] > 0:
             results["avg_read_time"] = np.mean(results["read_times"])
-            results["read_rate"] = results["success_rounds"] / results["total_time"]
+            results["read_rate"] = results["success_traces"] / results["total_time"]
+        
+        # 绘制最终的B-Scan图像
+        print("\n=== 绘制最终B-Scan图像 ===")
+        
+        try:
+            # 转换数据为numpy数组并转置
+            bscan_array = np.array(results["bscan_data"]).T
+            
+            # 使用pyqtgraph绘制B-Scan
+            win = pg.GraphicsLayoutWidget(show=True, title=f'连续B-Scan图像 ({num_traces}道)')
+            win.resize(1200, 800)
+            
+            # 添加图像项
+            plot = win.addPlot(title=f'连续B-Scan图像 ({num_traces}道)')
+            img = pg.ImageItem(bscan_array)
+            plot.addItem(img)
+            
+            # 设置图像属性
+            img.setLookupTable(pg.colormap.getFromMatplotlib('seismic').getLookupTable())
+            img.setLevels([np.min(bscan_array), np.max(bscan_array)])
+            
+            # 设置坐标轴方向，origin='upper'表示Y轴从上往下（时深关系）
+            plot.invertY(True)
+            
+            # 添加颜色条
+            cbar = pg.ColorBarItem(values=(np.min(bscan_array), np.max(bscan_array)), label='幅度')
+            win.addItem(cbar, row=0, col=1)
+            # 关联图像
+            cbar.setImageItem(img)
+            
+            # 保存图像到文件（简化版本，直接保存数据）
+            filename = f"./continuous_bscan_{num_traces}道.npy"
+            np.save(filename, bscan_array)
+            print(f"连续B-Scan数据已保存到: {filename}")
+            
+        except Exception as e:
+            print(f"绘制B-Scan失败: {e}")
         
         # 打印测试结果
-        debug_print(f"\n=== B-Scan实时绘制测试结果 ===")
-        debug_print(f"总轮数: {rounds}")
-        debug_print(f"成功轮数: {results['success_rounds']}")
-        debug_print(f"总耗时: {results['total_time']:.3f}秒")
-        debug_print(f"平均读取时间: {results['avg_read_time']*1000:.2f}毫秒")
-        debug_print(f"读取速率: {results['read_rate']:.2f}道/秒")
-        debug_print(f"是否保持了原始采集速率: {'是' if results['read_rate'] >= 10.0 else '否'}")
-        debug_print("=== B-Scan测试结束 ===")
+        print(f"\n=== 连续B-Scan采集测试结果 ===")
+        print(f"总道数: {num_traces}")
+        print(f"成功道数: {results['success_traces']}")
+        print(f"总耗时: {results['total_time']:.3f}秒")
+        print(f"平均读取时间: {results['avg_read_time']*1000:.2f}毫秒")
+        print(f"最大读取时间: {results['max_read_time']*1000:.2f}毫秒")
+        print(f"最小读取时间: {results['min_read_time']*1000:.2f}毫秒")
+        print(f"读取速率: {results['read_rate']:.2f}道/秒")
+        print(f"期望速率: 12.00道/秒")
+        print(f"是否满足期望速率: {'是' if results['read_rate'] >= 12.0 else '否'}")
         
-        # 保存最终B-Scan图像
-        plt.savefig("./bscan_final.png", dpi=300, bbox_inches='tight')
-        debug_print("B-Scan最终图像已保存")
+        # 计算稳定速率（去掉前10道和后10道，避免启动和结束时的波动）
+        if len(results['read_times']) > 20:
+            stable_read_times = results['read_times'][10:-10]
+            stable_rate = len(stable_read_times) / sum(stable_read_times)
+            print(f"稳定读取速率: {stable_rate:.2f}道/秒")
         
-        return results
-    
-    @staticmethod
-    def test_bscan_pyqtgraph(vna_controller, rounds=50):
-        """
-        测试使用pyqtgraph进行高效的B-Scan实时绘制
-        参数：
-        - vna_controller: VNA控制器实例
-        - rounds: 测试轮数
-        返回：
-        - 测试结果字典
-        """
-        if not PYQTGRAPH_AVAILABLE:
-            debug_print("pyqtgraph未安装，无法进行此测试")
-            return None
-        
-        results = {
-            "rounds": rounds,
-            "success_rounds": 0,
-            "read_times": [],
-            "total_time": 0,
-            "avg_read_time": 0,
-            "max_read_time": 0,
-            "min_read_time": float('inf'),
-            "read_rate": 0,
-            "bscan_data": []
-        }
-        
-        # 创建数据队列用于线程通信
-        data_queue = queue.Queue()
-        stop_event = threading.Event()
-        
-        class BScanWindow(pg.GraphicsLayoutWidget):
-            """pyqtgraph B-Scan显示窗口"""
-            def __init__(self):
-                super().__init__()
-                self.setWindowTitle('实时B-Scan图像 (pyqtgraph)')
-                self.setGeometry(100, 100, 1000, 800)
-                
-                # 创建视图
-                self.view = self.addViewBox()
-                self.view.setAspectLocked(False)
-                
-                # 创建图像项
-                self.img = pg.ImageItem()
-                self.view.addItem(self.img)
-                
-                # 设置颜色映射
-                self.colormap = pg.colormap.get('RdBu', source='matplotlib')  # 使用类似seismic的颜色映射
-                self.img.setLookupTable(self.colormap.getLookupTable())
-                
-                # 添加颜色条
-                self.cbar = pg.ColorBarItem(values=(0, 1), colorMap=self.colormap)
-                self.cbar.setImageItem(self.img)
-                self.cbar.setWidth(30)
-                self.cbar.setHeight(600)
-                self.addItem(self.cbar, row=0, col=1)
-                
-                # 设置坐标轴
-                self.view.setLabel('left', text='采样点')
-                self.view.setLabel('bottom', text='道数')
-                
-                # 初始化数据
-                self.bscan_data = []
-                
-            def update_bscan(self, ascan_data):
-                """更新B-Scan数据并刷新图像"""
-                self.bscan_data.append(ascan_data)
-                
-                # 转换为numpy数组并转置，使道数为X轴，采样点为Y轴
-                bscan_array = np.array(self.bscan_data).T
-                
-                # 更新图像数据
-                self.img.setImage(bscan_array)
-                
-                # 调整视图范围以适应新数据
-                self.view.autoRange()
-                
-            def save_image(self, filename):
-                """保存当前图像"""
-                self.scene().save()
-                debug_print(f"pyqtgraph B-Scan图像已保存")
-        
-        def pyqtgraph_main():
-            """pyqtgraph主循环，运行在主线程"""
-            debug_print("pyqtgraph主循环已启动")
-            
-            # 创建应用和窗口
-            app = pg.mkQApp()
-            win = BScanWindow()
-            win.show()
-            
-            def update_from_queue():
-                """从队列获取数据并更新图像"""
-                try:
-                    while not data_queue.empty():
-                        ascan_data = data_queue.get_nowait()
-                        if ascan_data is not None:
-                            win.update_bscan(ascan_data)
-                        data_queue.task_done()
-                    
-                    if stop_event.is_set():
-                        win.save_image("./bscan_pyqtgraph_final.png")
-                        app.quit()
-                except queue.Empty:
-                    pass
-            
-            # 创建定时器，定期从队列获取数据
-            timer = QtCore.QTimer()
-            timer.timeout.connect(update_from_queue)
-            timer.start(10)  # 每10ms检查一次队列
-            
-            # 启动应用事件循环
-            app.exec_()
-        
-        debug_print(f"\n=== 开始pyqtgraph B-Scan绘制测试 ({rounds}轮) ===")
-        
-        # 启动pyqtgraph主线程
-        pg_thread = threading.Thread(target=pyqtgraph_main)
-        pg_thread.daemon = False  # 必须在主线程运行，所以这里设置为非守护线程
-        pg_thread.start()
-        
-        start_total = time.time()
-        
-        for i in range(rounds):
-            # 读取A-Scan数据
-            round_start = time.time()
-            ascan_data = vna_controller.read_ascan_data()
-            round_end = time.time()
-            
-            if ascan_data is not None:
-                read_time = round_end - round_start
-                results["read_times"].append(read_time)
-                results["success_rounds"] += 1
-                results["bscan_data"].append(ascan_data)
-                
-                if read_time > results["max_read_time"]:
-                    results["max_read_time"] = read_time
-                if read_time < results["min_read_time"]:
-                    results["min_read_time"] = read_time
-                
-                # 将数据放入队列供pyqtgraph更新
-                data_queue.put(ascan_data)
-            
-            # 每10轮打印一次进度
-            if (i + 1) % 10 == 0:
-                debug_print(f"  已完成 {i + 1}/{rounds} 轮")
-        
-        results["total_time"] = time.time() - start_total
-        
-        # 通知pyqtgraph线程停止
-        stop_event.set()
-        
-        # 等待pyqtgraph线程完成
-        pg_thread.join(timeout=5.0)
-        
-        if results["success_rounds"] > 0:
-            results["avg_read_time"] = np.mean(results["read_times"])
-            results["read_rate"] = results["success_rounds"] / results["total_time"]
-        
-        # 打印测试结果
-        debug_print(f"\n=== pyqtgraph B-Scan绘制测试结果 ===")
-        debug_print(f"总轮数: {rounds}")
-        debug_print(f"成功轮数: {results['success_rounds']}")
-        debug_print(f"总耗时: {results['total_time']:.3f}秒")
-        debug_print(f"平均读取时间: {results['avg_read_time']*1000:.2f}毫秒")
-        debug_print(f"读取速率: {results['read_rate']:.2f}道/秒")
-        debug_print(f"是否保持了原始采集速率: {'是' if results['read_rate'] >= 10.0 else '否'}")
-        debug_print("=== pyqtgraph B-Scan测试结束 ===")
+        print("=== 连续B-Scan测试结束 ===")
         
         return results
 
 # ## 5. 主程序
 
 def main():
+    # 确保有QApplication实例
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(sys.argv)
+    
     # 创建控制器实例
     vna_controller = SimpleVNAController()
     
@@ -685,62 +794,49 @@ def main():
         # 1. 列出设备
         devices = vna_controller.list_devices()
         if not devices:
-            debug_print("未找到任何设备")
+            print("未找到任何设备")
             return
         
         # 2. 选择设备连接
         # 使用用户提供的设备名称
         device_name = "TCPIP0::MagicbookPro16-Hunter::hislip_PXI0_CHASSIS1_SLOT1_INDEX0::INSTR"
         if not vna_controller.open_device(device_name):
-            debug_print("无法打开设备")
+            print("无法打开设备")
             return
         
-        # 3. 测试1: 多轮A-Scan读取性能
-        reading_results = PerformanceTester.test_multi_round_reading(vna_controller, rounds=100)
+        # 3. 实时B-Scan采集和绘制测试
+        # 500道A-Scan，80ms周期
+        plotter = RealTimeBScanPlotter(vna_controller, num_traces=300, acquisition_period_ms=80)
         
-        # 4. 准备测试数据（用于存储测试）
-        debug_print("\n=== 准备存储测试数据 ===")
-        test_data = []
-        for i in range(50):  # 准备50道测试数据
-            data = vna_controller.read_ascan_data()
-            if data is not None:
-                test_data.append(data)
-        debug_print(f"已准备 {len(test_data)} 道测试数据")
+        # 开始采集和绘制
+        plotter.acquire_and_plot()
         
-        # 5. 测试2: 文件存储性能
-        storage_results = PerformanceTester.test_file_storage(test_data)
+        # 运行QApplication事件循环，保持窗口响应
+        app.exec()
         
-        # 6. 测试3: 边读取边绘制B-Scan
-        bscan_results = PerformanceTester.test_bscan_real_time(vna_controller, rounds=50)
-        
-        # 7. 测试4: pyqtgraph高效B-Scan绘制
-        bscan_pyqtgraph_results = PerformanceTester.test_bscan_pyqtgraph(vna_controller, rounds=50)
-        
-        # 8. 综合测试结果
-        debug_print("\n=== 综合测试结果 ===")
-        debug_print(f"1. 读取速率: {reading_results['read_rate']:.2f}道/秒 (期望: 12道/秒)")
-        debug_print(f"2. 存储效率: 单文件({storage_results['single_file_time']:.3f}秒) vs 多文件({storage_results['multi_file_time']:.3f}秒)")
-        debug_print(f"   推荐: {storage_results['recommended_method']}")
-        debug_print(f"3. Matplotlib边读取边绘制速率: {bscan_results['read_rate']:.2f}道/秒")
-        
-        if bscan_pyqtgraph_results:
-            debug_print(f"4. pyqtgraph高效绘制速率: {bscan_pyqtgraph_results['read_rate']:.2f}道/秒")
-            if bscan_results['read_rate'] > 0:
-                debug_print(f"   pyqtgraph性能提升: {bscan_pyqtgraph_results['read_rate'] / bscan_results['read_rate']:.2f}倍")
-        
-        debug_print("=== 所有测试完成 ===")
+        # 测试完成后获取结果
+        realtime_results = plotter.get_results()
+        if realtime_results:
+            # 综合测试结果
+            print("\n=== 最终测试结果 ===")
+            print(f"实时B-Scan采集结果:")
+            print(f"   采集道数: {realtime_results['success_traces']}/{realtime_results['num_traces']}")
+            print(f"   总耗时: {realtime_results['total_time']:.3f}秒")
+            print(f"   连续采集速率: {realtime_results['read_rate']:.2f}道/秒")
+            print(f"   期望速率: {1000/80:.2f}道/秒")
+            print(f"   是否满足期望速率: {'是' if realtime_results['read_rate'] >= 1000/80 else '否'}")
+            print("=== 所有测试完成 ===")
         
     except KeyboardInterrupt:
-        debug_print("\n用户中断程序")
+        print("\n用户中断程序")
     except Exception as e:
-        debug_print(f"程序错误: {e}")
+        print(f"程序错误: {e}")
         import traceback
         traceback.print_exc()
     finally:
         # 清理资源
         vna_controller.close_device()
-        plt.close('all')
-        debug_print("程序已退出")
+        print("程序已退出")
 
 # 运行主程序
 if __name__ == "__main__":

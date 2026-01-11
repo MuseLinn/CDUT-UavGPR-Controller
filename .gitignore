@@ -11,7 +11,7 @@
 /src/dist
 /src/ROS_RTK_参考
 /tests
-/test_data
+/src/test_data
 
 /*.png
 /src/main_nogui.py
