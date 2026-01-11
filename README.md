@@ -4,6 +4,8 @@ English | [简体中文](README_zh.md)
 
 ## Project Overview
 
+**DO NOT UPLOAD YOUR TEST CODES TO THE MASTER BRANCH!!!**
+
 This project provides Python scripts for controlling Keysight USB Vector Network Analyzers (VNA), utilizing the PyVISA library for device connection, control, and data acquisition. It is compatible with the P973X series USB-VNA devices and supports essential measurement workflows. The software also integrates RTK high-precision positioning for geolocation-aware data acquisition, primarily designed for Ground Penetrating Radar (GPR) applications.
 
 References:
@@ -198,7 +200,7 @@ Log levels include DEBUG, INFO, WARNING, ERROR, and CRITICAL.
 ## Development Guidelines
 
 ### Getting Started for New Team Members
-1. Review the [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for detailed project architecture and development practices
+1. Review the [DEVELOPMENT_GUIDE.md](src/DEVELOPMENT_GUIDE.md) for detailed project architecture and development practices
 2. Familiarize yourself with the project structure and key modules
 3. Set up your development environment following the requirements section
 4. Test the basic functionality before making changes
@@ -210,4 +212,4 @@ Log levels include DEBUG, INFO, WARNING, ERROR, and CRITICAL.
 - [rtk_module.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/rtk_module.py): GPS/RTK positioning module with NMEA parsing
 - [logger_config.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/logger_config.py): Centralized logging configuration
 
-For detailed development and maintenance instructions, please refer to the [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) document.
+For detailed development and maintenance instructions, please refer to the [DEVELOPMENT_GUIDE.md](src/DEVELOPMENT_GUIDE.md) document.

@@ -4,6 +4,8 @@
 
 ## 项目简介
 
+**请勿将测试代码上传至Master分支！**
+
 本项目是用于控制 Keysight USB 矢量网络分析仪(VNA)的 Python 脚本，通过 PyVISA 库实现对设备的连接、控制和数据采集功能。适用于 P973X 系列 USB-VNA 设备，主要用于探地雷达(GPR)数据采集。软件还集成了RTK高精度定位系统，实现基于地理位置的数据采集，专为探地雷达应用设计。
 
 References: 
@@ -196,7 +198,7 @@ RTK定位模块提供了实时GPS数据集成功能：
 ## 开发指南
 
 ### 新团队成员入门指南
-1. 仔细阅读 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) 文档，了解项目架构和开发实践
+1. 仔细阅读 [DEVELOPMENT_GUIDE.md](src/DEVELOPMENT_GUIDE.md) 文档，了解项目架构和开发实践
 2. 熟悉项目结构和核心模块
 3. 按照需求部分设置您的开发环境
 4. 在做更改之前先测试基本功能
@@ -208,4 +210,4 @@ RTK定位模块提供了实时GPS数据集成功能：
 - [rtk_module.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/rtk_module.py): GPS/RTK定位模块，包含NMEA协议解析
 - [logger_config.py](file:///C:/Users/unive/Desktop/usbvna_v202511/src/lib/logger_config.py): 集中化日志配置
 
-有关详细的开发和维护说明，请参阅 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) 文档。
+有关详细的开发和维护说明，请参阅 [DEVELOPMENT_GUIDE.md](src/DEVELOPMENT_GUIDE.md) 文档。
