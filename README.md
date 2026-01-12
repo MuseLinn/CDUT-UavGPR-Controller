@@ -6,7 +6,7 @@ English | [简体中文](README_zh.md)
 
 **DO NOT UPLOAD YOUR TEST CODES TO THE MASTER BRANCH!!!**
 
-This project provides Python scripts for controlling Keysight USB Vector Network Analyzers (VNA), utilizing the PyVISA library for device connection, control, and data acquisition. It is compatible with the P973X series USB-VNA devices and supports essential measurement workflows. The software also integrates RTK high-precision positioning for geolocation-aware data acquisition, primarily designed for Ground Penetrating Radar (GPR) applications.
+This project provides Python scripts for controlling Keysight USB Vector Network Analyzers (VNA), utilizing the PyVISA library for device connection, control, and data acquisition. It is compatible with the P937X series USB-VNA devices and supports essential measurement workflows. The software also integrates RTK high-precision positioning for geolocation-aware data acquisition, primarily designed for Ground Penetrating Radar (GPR) applications.
 
 References:
 
