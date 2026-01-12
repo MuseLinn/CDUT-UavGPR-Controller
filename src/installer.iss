@@ -22,19 +22,20 @@ OutputBaseFilename=gpr_daq_gui_installer
 Compression=lzma
 SolidCompression=yes
 
-; 安装程序图标
-SetupIconFile=lib\app_logo.ico
+; 安装程序图标（暂时移除，使用默认图标）
+; SetupIconFile=lib\app_logo.ico
 
 [Languages]
-Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 使用默认英文语言，移除中文语言包依赖
+Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
-; 递归添加所有文件和子目录
-Source: "gpr_daq_gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 递归添加所有文件和子目录 - 使用正确的相对路径
+source: "dist\gpr_daq_gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{cm:ProgramOnTheWeb,CDUT GPR DAQ GUI}"; Filename: "https://github.com/your-username/CDUT-UavGPR-Controller"
