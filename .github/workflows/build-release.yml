@@ -31,10 +31,17 @@ jobs:
         pyinstaller main_gui.spec
       shell: powershell
 
+    - name: Package build output into zip file
+      run: |
+        cd src/dist
+        Compress-Archive -Path gpr_daq_gui -DestinationPath gpr_daq_gui.zip
+      shell: powershell
+
     - name: Upload binaries to release
-      uses: ncipollo/release-action@v1
+      uses: svenstaro/upload-release-action@v2
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        artifacts: src/dist/*
-        tag: ${{ github.ref_name }}
-        allowUpdates: true
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: src/dist/*.zip
+        tag: ${{ github.ref }}
+        overwrite: true
+        file_glob: true
