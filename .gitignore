@@ -10,7 +10,6 @@
 /src/build
 /src/dist
 /src/ROS_RTK_参考
-/tests
 /src/test_data
 
 /*.png
