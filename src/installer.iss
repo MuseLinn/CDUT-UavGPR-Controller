@@ -2,8 +2,8 @@
 ; 用于生成 GPR DAQ GUI 的 EXE 安装包
 
 #define AppName "CDUT GPR DAQ GUI"
-; 定义应用版本，从GitHub标签获取
-#define AppVersion GetEnv("GITHUB_TAG_NAME")
+; 定义应用版本，优先使用命令行参数，否则使用默认值
+#define AppVersion "1.0.0" // 默认版本号，命令行参数会覆盖它
 
 [Setup]
 ; 基本配置

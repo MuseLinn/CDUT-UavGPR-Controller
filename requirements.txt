@@ -1,6 +1,8 @@
 PyQt6
+PyQt6-Fluent-Widgets[full]
 numpy>=1.21.0
 matplotlib>=3.5.0
 pyvisa>=1.12.0
 Pillow
 colorlog
+pyserial
