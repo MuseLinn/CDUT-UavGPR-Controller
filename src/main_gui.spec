@@ -2,8 +2,8 @@
 import os
 import sys
 
-# 获取当前目录的绝对路径
-current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+# 获取当前目录的绝对路径（更可靠的方式）
+current_dir = os.path.dirname(os.path.abspath(__file__))
 lib_path = os.path.join(current_dir, 'lib')
 
 a = Analysis(
@@ -50,6 +50,6 @@ coll = COLLECT(exe,
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     name='gpr_daq_gui'
 )

@@ -7,10 +7,7 @@ on:
 
 jobs:
   build-and-upload:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -28,17 +25,11 @@ jobs:
         pip install -r requirements.txt || echo "requirements.txt not found, installing common packages"
         pip install PyQt6 numpy matplotlib pyvisa Pillow
 
-    - name: Build executable with PyInstaller (Windows)
-      if: runner.os == 'Windows'
+    - name: Build executable with PyInstaller
       run: |
-        cd src && pyinstaller main_gui.spec
-      shell: bash
-
-    - name: Build executable with PyInstaller (Linux/Mac)
-      if: runner.os != 'Windows'
-      run: |
-        cd src && pyinstaller main_gui.spec
-      shell: bash
+        cd src
+        pyinstaller main_gui.spec
+      shell: powershell
 
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
