@@ -28,15 +28,15 @@ References:
 - 设备驱动：Keysight Network Analyzers Python Instrument Drivers (版本 V2.0.2)
 
 ### 软件依赖
-项目使用工程目录下的 Conda 环境，其中已包含运行所需的所有依赖包：
+项目使用工程目录下的 Conda 环境，其中已包含运行所需的所有依赖包（未提交，请自行通过requirements.txt安装）：
 - Python 3.10
 - PyVISA
 - PyQt6
 - PyQt6-Fluent-Widgets
-- Keysight Network Analyzers Python Instrument Drivers (V2.0.2)
+- ~~Keysight Network Analyzers Python Instrument Drivers (V2.0.2)~~ 弃用
 - PySerial (用于RTK GPS模块通信)
 
-驱动程序已包含在项目中的压缩包 [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip](archive/keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip) 内，并已在 Conda 环境中安装完毕。
+【闲置】驱动程序已包含在项目中的压缩包 [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip](archive/keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip) 内，并已在 Conda 环境中安装完毕。
 
 ### 可选依赖（用于数据可视化等）
 ```bash

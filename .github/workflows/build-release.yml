@@ -1,0 +1,50 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-upload:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt || echo "requirements.txt not found, installing common packages"
+        pip install PyQt6 numpy matplotlib pyvisa Pillow
+
+    - name: Build executable with PyInstaller (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd src && pyinstaller main_gui.spec
+      shell: bash
+
+    - name: Build executable with PyInstaller (Linux/Mac)
+      if: runner.os != 'Windows'
+      run: |
+        cd src && pyinstaller main_gui.spec
+      shell: bash
+
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: src/dist/*
+        tag: ${{ github.ref }}
+        overwrite: true
+        file_glob: true

@@ -21,7 +21,7 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# 添加图标
+# 添加图标 - 修正路径为项目内的图标文件
 exe = EXE(
     pyz,
     a.scripts,
@@ -41,8 +41,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # 指定图标文件
-    icon=r'C:\Users\unive\Desktop\usbvna\src\lib\app_logo.png'  # {{ edit_1 }}
+    # 修正图标路径
+    icon=r'lib/app_logo.png'
 )
 
 coll = COLLECT(exe,

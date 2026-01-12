@@ -33,10 +33,10 @@ The project uses a Conda environment in the project directory, which includes al
 - PyVISA
 - PyQt6
 - PyQt6-Fluent-Widgets
-- Keysight Network Analyzers Python Instrument Drivers (V2.0.2)
+- ~~Keysight Network Analyzers Python Instrument Drivers (V2.0.2)~~[DEPRECATED]
 - PySerial (for RTK GPS module communication)
 
-The driver package is included in the archive [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip] and should be installed within the Conda environment.
+【DEPRECATED】The driver package is included in the archive [keysight_ktna_V2.0.2_python3.10_64-bit_binary_package.zip] and should be installed within the Conda environment.
 
 ### Optional Dependencies (for data visualization, etc.)
 ```bash
