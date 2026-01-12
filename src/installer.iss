@@ -1,6 +1,8 @@
 ; Inno Setup 安装脚本
 ; 用于生成 GPR DAQ GUI 的 EXE 安装包
 
+#define AppName "CDUT GPR DAQ GUI"
+
 [Setup]
 ; 基本配置
 AppName=CDUT GPR DAQ GUI
