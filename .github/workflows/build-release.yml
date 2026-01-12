@@ -23,7 +23,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt || echo "requirements.txt not found, installing common packages"
-        pip install PyQt6 numpy matplotlib pyvisa Pillow
+        pip install PyQt6 numpy matplotlib pyvisa Pillow colorlog
 
     - name: Build executable with PyInstaller
       run: |
@@ -37,11 +37,24 @@ jobs:
         Compress-Archive -Path gpr_daq_gui -DestinationPath gpr_daq_gui.zip
       shell: powershell
 
+    - name: Install Inno Setup
+      run: |
+        choco install innosetup --yes
+      shell: powershell
+
+    - name: Build EXE installer with Inno Setup
+      run: |
+        cd src
+        iscc installer.iss /DAppVersion=${{ github.ref_name }}
+      shell: powershell
+
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: src/dist/*.zip
+        file: |
+          src/dist/*.zip
+          src/*.exe
         tag: ${{ github.ref }}
         overwrite: true
         file_glob: true

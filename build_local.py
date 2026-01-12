@@ -1,3 +1,13 @@
+'''
+Author       : MuseLinn
+Date         : 2026-01-12 17:53:30
+LastEditors  : MuseLinn
+LastEditTime : 2026-01-12 21:30:54
+FilePath     : \CDUT_UavGPR_Controller_v202511\build_local.py
+Description  : 
+
+Copyright (c) 2026 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
+'''
 #!/usr/bin/env python
 """
 本地构建脚本 - 用于测试构建过程
