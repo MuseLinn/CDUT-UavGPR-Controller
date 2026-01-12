@@ -2,6 +2,8 @@
 ; 用于生成 GPR DAQ GUI 的 EXE 安装包
 
 #define AppName "CDUT GPR DAQ GUI"
+; 定义应用版本，从GitHub标签获取
+#define AppVersion GetEnv("GITHUB_TAG_NAME")
 
 [Setup]
 ; 基本配置
@@ -49,15 +51,8 @@ Filename: "{app}\gpr_daq_gui.exe"; Description: "{cm:LaunchProgram,{#StringChang
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 
-[Code]
-; 定义应用版本，从GitHub标签获取
-#define AppVersion GetEnv("GITHUB_TAG_NAME")
-
-; 处理版本号，移除前缀v
-procedure InitializeWizard;
-begin
-  if Pos('v', AppVersion) = 1 then
-  begin
-    WizardForm.AppVersionLabel.Caption := Copy(AppVersion, 2, Length(AppVersion) - 1);
-  end;
-end;
+; 移除不必要的[Code]部分，版本号由命令行参数直接传递
+; [Code]
+; procedure InitializeWizard;
+; begin
+; end;
