@@ -2,8 +2,9 @@
 import os
 import sys
 
-# 获取当前目录的绝对路径（更可靠的方式）
-current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取当前目录的绝对路径 - 使用sys.argv[0]获取spec文件路径
+spec_file_path = sys.argv[0]
+current_dir = os.path.dirname(os.path.abspath(spec_file_path))
 lib_path = os.path.join(current_dir, 'lib')
 
 a = Analysis(
