@@ -53,8 +53,8 @@ jobs:
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: |
-          src/dist/*.zip
-          src/*.exe
+          src/dist/gpr_daq_gui.zip
+          src/gpr_daq_gui_installer.exe
         tag: ${{ github.ref }}
         overwrite: true
-        file_glob: true
+        file_glob: false
