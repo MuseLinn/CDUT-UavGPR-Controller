@@ -32,10 +32,10 @@ jobs:
       shell: powershell
 
     - name: Upload binaries to release
-      uses: svenstaro/upload-release-action@v2
+      uses: ncipollo/release-action@v1
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: src/dist/*
-        tag: ${{ github.ref }}
-        overwrite: true
-        file_glob: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: src/dist/*
+        tag: ${{ github.ref_name }}
+        allowUpdates: true
+        generateReleaseNotes: true
