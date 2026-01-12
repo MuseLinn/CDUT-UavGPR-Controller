@@ -49,12 +49,11 @@ jobs:
       shell: powershell
 
     - name: Upload binaries to release
-      uses: svenstaro/upload-release-action@v2
+      uses: softprops/action-gh-release@v2
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: |
+        token: ${{ secrets.GITHUB_TOKEN }}
+        files: |
           src/dist/gpr_daq_gui.zip
           src/gpr_daq_gui_installer.exe
-        tag: ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
         overwrite: true
-        file_glob: false
