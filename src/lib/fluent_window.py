@@ -493,7 +493,7 @@ class VNAControllerGUI(FluentWindow):
         # self.resize(1200, 900)
         # self.setMinimumSize(1200, 900)
         root = QFileInfo(__file__).absolutePath()
-        self.setWindowIcon(QIcon(root + '/app_logo.png'))
+        self.setWindowIcon(QIcon(root + '/usagi_logo.png'))
         # 创建启动页面
         self.splashScreen = SplashScreen(self.windowIcon(), self)
         self.splashScreen.setIconSize(QSize(102, 102))

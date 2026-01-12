@@ -56,4 +56,4 @@ jobs:
           src/dist/gpr_daq_gui.zip
           src/gpr_daq_gui_installer.exe
         tag_name: ${{ github.ref_name }}
-        overwrite: true
+        overwrite_files: true

@@ -26,14 +26,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='gpr_daq_gui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -42,8 +41,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # 修正图标路径
-    icon=r'lib/app_logo.png'
+    # 修正图标路径，使用.ico格式的图标文件
+    icon=r'lib/app_logo.ico'
 )
 
 coll = COLLECT(exe,

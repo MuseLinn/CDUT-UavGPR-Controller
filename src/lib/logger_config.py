@@ -61,9 +61,18 @@ def setup_logger(name, log_file=None, level=logging.INFO, max_bytes=10*1024*1024
     # 如果指定了日志文件，则添加文件处理器
     if log_file:
         # 确保日志文件目录存在
-        log_dir = os.path.dirname(log_file)
+        # 使用用户目录存储日志，避免权限问题
+        if log_file.startswith('logs/') or log_file.startswith('logs\\'):
+            # 获取用户目录
+            user_dir = os.path.expanduser("~")
+            # 在用户目录下创建日志文件夹
+            log_dir = os.path.join(user_dir, "CDUT-GPR-DAQ-GUI", "logs")
+            log_file = os.path.join(log_dir, os.path.basename(log_file))
+        else:
+            log_dir = os.path.dirname(log_file)
+        
         if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+            os.makedirs(log_dir, exist_ok=True)
             
         # 创建轮转文件处理器
         file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count)

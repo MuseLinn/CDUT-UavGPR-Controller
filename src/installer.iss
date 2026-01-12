@@ -25,8 +25,8 @@ OutputBaseFilename=gpr_daq_gui_installer
 Compression=lzma
 SolidCompression=yes
 
-; 安装程序图标（暂时移除，使用默认图标）
-; SetupIconFile=lib\app_logo.ico
+; 安装程序图标
+SetupIconFile=lib\app_logo.ico
 
 [Languages]
 ; 使用默认英文语言，移除中文语言包依赖
