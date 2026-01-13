@@ -99,7 +99,7 @@ jobs:
         $releaseNotes = "## Release v$version`r`n`r`n"
         $releaseNotes += "### Package Information`r`n"
         $releaseNotes += "- Package version: v$version`r`n"
-        $releaseNotes += "- Build time: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`r`n"
+        $releaseNotes += "- Build time: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")`r`n"
         $releaseNotes += "- System environment: Windows Latest (GitHub Action)`r`n`r`n"
         $releaseNotes += "### Changelog`r`n"
         $releaseNotes += $formattedCommits -join "`r`n"
