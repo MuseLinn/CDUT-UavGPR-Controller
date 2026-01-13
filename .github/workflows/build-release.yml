@@ -62,13 +62,13 @@ jobs:
     - name: Generate release notes
       id: generate_release_notes
       run: |
-        # 获取所有标签并按创建日期降序排序
+        # Get all tags sorted by creation date descending
         $allTags = git tag --sort=-creatordate 2>$null
         $tagCount = $allTags.Count
         $currentTag = ${{ github.ref_name }}
         $version = "${{ steps.get_version.outputs.VERSION }}"
         
-        # 获取提交记录
+        # Get previous tag if exists
         $previousTag = ""
         if ($tagCount -gt 1) {
           $currentTagIndex = $allTags.IndexOf($currentTag)
@@ -77,35 +77,37 @@ jobs:
           }
         }
         
-        # 生成提交记录
+        # Generate commit log
         if ($previousTag) {
           $commits = git log $previousTag..$currentTag --oneline --no-merges
         } else {
           $commits = git log --oneline --no-merges
         }
         
-        # 格式化提交记录
+        # Format commit log
         $formattedCommits = @()
         foreach ($commit in $commits) {
           $formattedCommits += "- $commit"
         }
         
-        # 如果没有提交记录，设置默认值
+        # Set default if no commits
         if ($formattedCommits.Count -eq 0) {
-          $formattedCommits = "- 暂无提交记录"
+          $formattedCommits = "- No commits found"
         }
         
-        # 创建发布说明
-        $releaseNotes = "## 版本 v$version 发布`r`n`r`n"
-        $releaseNotes += "### 打包信息`r`n"
-        $releaseNotes += "- 安装包版本：v$version`r`n"
-        $releaseNotes += "- 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`r`n"
-        $releaseNotes += "- 系统环境：Windows Latest (GitHub Action)`r`n`r`n"
-        $releaseNotes += "### 本次更新（提交记录）`r`n"
+        # Create release notes
+        $releaseNotes = "## Release v$version`r`n`r`n"
+        $releaseNotes += "### Package Information`r`n"
+        $releaseNotes += "- Package version: v$version`r`n"
+        $releaseNotes += "- Build time: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`r`n"
+        $releaseNotes += "- System environment: Windows Latest (GitHub Action)`r`n`r`n"
+        $releaseNotes += "### Changelog`r`n"
         $releaseNotes += $formattedCommits -join "`r`n"
         
-        # 输出到步骤输出
-        echo "RELEASE_NOTES=$releaseNotes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        # Output to step output using here-doc syntax for proper escaping
+        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
+        echo "$releaseNotes" >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
       shell: powershell
 
     - name: Upload binaries to release
