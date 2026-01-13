@@ -40,30 +40,6 @@ jobs:
         echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
       shell: powershell
 
-    - name: Generate release notes
-      id: generate_release_notes
-      run: |
-        # 获取从上次标签到当前标签的提交记录作为更新说明
-        # 如果是第一次发布，获取所有提交记录
-        $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
-        if ($previousTag) {
-          # 有之前的标签，获取两次标签之间的提交
-          $releaseNotes = git log --oneline --no-merges $previousTag..HEAD
-        } else {
-          # 第一次发布，获取所有提交
-          $releaseNotes = git log --oneline --no-merges
-        }
-        
-        # 格式化发布说明
-        $formattedNotes = "## 更新说明\n\n"
-        $formattedNotes += $releaseNotes | ForEach-Object { "- $_" } | Out-String
-        
-        # 保存到环境变量
-        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
-        echo "$formattedNotes" >> $env:GITHUB_OUTPUT
-        echo "EOF" >> $env:GITHUB_OUTPUT
-      shell: powershell
-
     - name: Package build output into zip file
       run: |
         cd src/dist
@@ -81,6 +57,66 @@ jobs:
         cd src
         # 传入版本号 + 指定安装包输出名（带版本号）
         iscc installer.iss /DAppVersion=${{ steps.get_version.outputs.VERSION }} /DOutputFilename=gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}_installer
+      shell: powershell
+
+    - name: Generate release notes
+      id: generate_release_notes
+      run: |
+        # 获取所有标签并按创建日期降序排序
+        $allTags = git tag --sort=-creatordate
+        $tagCount = $allTags.Count
+        $currentTag = ${{ github.ref_name }}
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        
+        # 生成提交记录
+        if ($tagCount -gt 1) {
+          # 有多个标签，获取当前标签和上一个标签
+          $currentTagIndex = $allTags.IndexOf($currentTag)
+          
+          if ($currentTagIndex -ne -1 -and $currentTagIndex -lt $tagCount - 1) {
+            # 当前标签在列表中，且不是最后一个标签
+            $previousTag = $allTags[$currentTagIndex + 1]
+            $commits = git log $previousTag..$currentTag --pretty=format:"- %s (%h)"
+          } else {
+            # 无法确定上一个标签，获取所有提交
+            $commits = git log --pretty=format:"- %s (%h)"
+          }
+        } else {
+          # 只有一个标签或没有标签，获取所有提交
+          $commits = git log --pretty=format:"- %s (%h)"
+        }
+        
+        # 如果没有提交记录，设置默认值
+        if (-not $commits) {
+          $commits = "- 暂无提交记录"
+        }
+        
+        # 拼接发布说明内容
+        $releaseNotes = @"
+## 🚀 版本 v$version 发布
+
+### 📦 打包信息
+- 安装包版本：v$version
+- 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+- 系统环境：Windows Latest (GitHub Action)
+
+### 📝 本次更新（提交记录）
+$commits
+
+### 📌 安装说明
+1. 下载下方的安装包 `gpr_daq_gui_v$version_installer.exe`；
+2. 双击运行，按提示完成安装；
+3. 支持Windows 7及以上系统（管理员权限可选）。
+
+### ⚠️ 注意事项
+- 安装前请关闭旧版本程序；
+- 如遇权限问题，右键以管理员身份运行安装包。
+"@
+        
+        # 将生成的说明输出到步骤输出
+        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
+        echo "$releaseNotes" >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
       shell: powershell
 
     - name: Upload binaries to release
