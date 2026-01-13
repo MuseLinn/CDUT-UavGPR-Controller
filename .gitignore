@@ -8,6 +8,7 @@
 /logs
 /src/logs
 /src/build
+/src/config
 /src/dist
 /src/ROS_RTK_参考
 /src/test_data

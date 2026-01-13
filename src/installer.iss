@@ -3,9 +3,14 @@
 
 #define AppName "CDUT GPR DAQ GUI"
 ; 定义应用版本，优先使用命令行参数，否则使用默认值
-#define AppVersion GetEnv('AppVersion') != '' ? GetEnv('AppVersion') : "1.0.0"
-; 新增：定义输出文件名，优先使用命令行参数
-#define OutputFilename GetEnv('OutputFilename') != '' ? GetEnv('OutputFilename') : "gpr_daq_gui_installer"
+#ifndef AppVersion
+#define AppVersion "1.0.0"
+#endif
+
+; 定义输出文件名，优先使用命令行参数
+#ifndef OutputFilename
+#define OutputFilename "gpr_daq_gui_installer"
+#endif
 
 [Setup]
 ; 基本配置
@@ -19,10 +24,12 @@ DefaultDirName={autopf}\CDUT-GPR-DAQ-GUI
 DefaultGroupName=CDUT GPR DAQ GUI
 AllowNoIcons=yes
 LicenseFile=
-InfoBeforeFile=
+InfoBeforeFile=install_info.rtf
 InfoAfterFile=
 ; 安装程序图标
 SetupIconFile=lib\app_logo.ico
+; Specifies the name(s) of the image file(s) to display in the upper right corner of the wizard.
+WizardSmallImageFile=lib\CDUT_LOGO.png
 
 OutputDir=.
 ; 使用自定义参数作为输出文件名（带版本号）
@@ -38,17 +45,20 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
+; 保留，避免交付甲方的平台过老无法使用
+;Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
 ; 递归添加所有文件和子目录 - 使用正确的相对路径
 source: "dist\gpr_daq_gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{cm:ProgramOnTheWeb,CDUT GPR DAQ GUI}"; Filename: "https://github.com/MuseLinn/CDUT-UavGPR-Controller"
-Name: "{group}\{cm:UninstallProgram,CDUT GPR DAQ GUI}"; Filename: "{uninstallexe}"
+Name: "{group}\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe";
+Name: "{group}\{cm:ProgramOnTheWeb,CDUT GPR DAQ GUI}"; Filename: "https://github.com/MuseLinn/CDUT-UavGPR-Controller";
+Name: "{group}\{cm:UninstallProgram,CDUT GPR DAQ GUI}"; Filename: "{uninstallexe}";
 Name: "{commondesktop}\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe"; Tasks: quicklaunchicon
+; 保留
+;Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe"; Tasks: quicklaunchicon
 
 [Run]
 Filename: "{app}\gpr_daq_gui.exe"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

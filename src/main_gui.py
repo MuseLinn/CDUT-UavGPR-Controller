@@ -3,11 +3,11 @@
 Author       : Linn
 Date         : 2025-07-28 17:02:03
 LastEditors  : Linn
-LastEditTime : 2025-07-29 04:50:00
+LastEditTime : 2026-01-13 04:50:00
 FilePath     : \\usbvna\\src\\main_gui.py
 Description  : Main program to control the USB-VNA P9371B, GPR DATA Acquisition Software
 
-Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
+Copyright (c) 2026 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 """
 
 import sys
@@ -18,7 +18,7 @@ import sys
 
 # 从lib模块导入VNAController类和日志配置函数
 from lib.logger_config import setup_logger
-from lib.fluent_window import VNAControllerGUI
+from lib.main_window import VNAControllerGUI
 
 # NOTE: 创建日志记录器，使用轮转日志文件，每个文件最大10MB，保留5个备份文件
 logger = setup_logger("vna_gui", "logs/vna_gui.log", level=10)  # 10对应DEBUG级别
