@@ -15,7 +15,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.10'
         cache: 'pip'
 
     - name: Install dependencies
@@ -23,7 +23,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt || echo "requirements.txt not found, installing common packages"
-        pip install PyQt6 numpy matplotlib pyvisa Pillow colorlog
+        # pip install PyQt6 numpy matplotlib pyvisa Pillow colorlog
 
     - name: Build executable with PyInstaller
       run: |
@@ -31,10 +31,20 @@ jobs:
         pyinstaller main_gui.spec
       shell: powershell
 
+    - name: Extract version number
+      id: get_version
+      run: |
+        # 去掉 Git Tag 的 v 前缀（如 v1.0.1 → 1.0.1）
+        $VERSION = "${{ github.ref_name }}".Replace('v', '')
+        # 输出版本号供后续步骤使用
+        echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
+      shell: powershell
+
     - name: Package build output into zip file
       run: |
         cd src/dist
-        Compress-Archive -Path gpr_daq_gui -DestinationPath gpr_daq_gui.zip
+        # 用版本号命名 zip 包：gpr_daq_gui_v1.0.1.zip
+        Compress-Archive -Path gpr_daq_gui -DestinationPath "gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}.zip"
       shell: powershell
 
     - name: Install Inno Setup
@@ -45,7 +55,8 @@ jobs:
     - name: Build EXE installer with Inno Setup
       run: |
         cd src
-        iscc installer.iss /DAppVersion=${{ github.ref_name }}
+        # 传入版本号 + 指定安装包输出名（带版本号）
+        iscc installer.iss /DAppVersion=${{ steps.get_version.outputs.VERSION }} /DOutputFilename=gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}_installer
       shell: powershell
 
     - name: Upload binaries to release
@@ -53,7 +64,9 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         files: |
-          src/dist/gpr_daq_gui.zip
-          src/gpr_daq_gui_installer.exe
+          # 上传带版本号的 zip 包
+          src/dist/gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}.zip
+          # 上传带版本号的安装包
+          src/gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}_installer.exe
         tag_name: ${{ github.ref_name }}
         overwrite_files: true

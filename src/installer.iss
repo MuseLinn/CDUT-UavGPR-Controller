@@ -3,30 +3,34 @@
 
 #define AppName "CDUT GPR DAQ GUI"
 ; 定义应用版本，优先使用命令行参数，否则使用默认值
-#define AppVersion "1.0.0"
-; 默认版本号，命令行参数会覆盖它
+#define AppVersion GetEnv('AppVersion') != '' ? GetEnv('AppVersion') : "1.0.0"
+; 新增：定义输出文件名，优先使用命令行参数
+#define OutputFilename GetEnv('OutputFilename') != '' ? GetEnv('OutputFilename') : "gpr_daq_gui_installer"
 
 [Setup]
 ; 基本配置
 AppName=CDUT GPR DAQ GUI
 AppVersion={#AppVersion}
 AppPublisher=CDUT
-AppPublisherURL=https://github.com/your-username/CDUT-UavGPR-Controller
-AppSupportURL=https://github.com/your-username/CDUT-UavGPR-Controller/issues
-AppUpdatesURL=https://github.com/your-username/CDUT-UavGPR-Controller/releases
+AppPublisherURL=https://github.com/MuseLinn/CDUT-UavGPR-Controller
+AppSupportURL=https://github.com/MuseLinn/CDUT-UavGPR-Controller/issues
+AppUpdatesURL=https://github.com/MuseLinn/CDUT-UavGPR-Controller/releases
 DefaultDirName={autopf}\CDUT-GPR-DAQ-GUI
 DefaultGroupName=CDUT GPR DAQ GUI
 AllowNoIcons=yes
 LicenseFile=
 InfoBeforeFile=
 InfoAfterFile=
-OutputDir=.
-OutputBaseFilename=gpr_daq_gui_installer
-Compression=lzma
-SolidCompression=yes
-
 ; 安装程序图标
 SetupIconFile=lib\app_logo.ico
+
+OutputDir=.
+; 使用自定义参数作为输出文件名（带版本号）
+OutputBaseFilename={#OutputFilename}
+Compression=lzma
+SolidCompression=yes
+; 允许用户在安装时选择语言
+ShowLanguageDialog=yes
 
 [Languages]
 ; 使用默认英文语言，移除中文语言包依赖
@@ -41,7 +45,7 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 source: "dist\gpr_daq_gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{cm:ProgramOnTheWeb,CDUT GPR DAQ GUI}"; Filename: "https://github.com/your-username/CDUT-UavGPR-Controller"
+Name: "{group}\{cm:ProgramOnTheWeb,CDUT GPR DAQ GUI}"; Filename: "https://github.com/MuseLinn/CDUT-UavGPR-Controller"
 Name: "{group}\{cm:UninstallProgram,CDUT GPR DAQ GUI}"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe"; Tasks: desktopicon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#AppName}"; Filename: "{app}\gpr_daq_gui.exe"; Tasks: quicklaunchicon
@@ -51,9 +55,3 @@ Filename: "{app}\gpr_daq_gui.exe"; Description: "{cm:LaunchProgram,{#StringChang
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
-
-; 移除不必要的[Code]部分，版本号由命令行参数直接传递
-; [Code]
-; procedure InitializeWizard;
-; begin
-; end;
