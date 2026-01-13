@@ -65,7 +65,7 @@ jobs:
         # Get all tags sorted by creation date descending
         $allTags = git tag --sort=-creatordate 2>$null
         $tagCount = $allTags.Count
-        $currentTag = ${{ github.ref_name }}
+        $currentTag = "${{ github.ref_name }}"
         $version = "${{ steps.get_version.outputs.VERSION }}"
         
         # Get previous tag if exists
