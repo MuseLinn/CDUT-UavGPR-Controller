@@ -359,31 +359,35 @@ class VNAControllerGUI(FluentWindow):
 
     def refresh_rtk_ports(self):
         """刷新RTK串口列表"""
+        self.log_message("刷新RTK串口列表")
         # 保存当前选择的串口（如果存在）
         current_port = self.rtk_port_combo.currentText() if self.rtk_port_combo.count() > 0 else None
         
         # 清空现有列表
         self.rtk_port_combo.clear()
         
-        # 获取可用的串口列表
-        available_ports = RTKModule.list_available_ports()
-        if available_ports:
-            self.rtk_port_combo.addItems(available_ports)
-            # 尝试恢复之前选择的串口，如果不存在则选择第一个
-            if current_port and current_port in available_ports:
-                self.rtk_port_combo.setCurrentText(current_port)
+        try:
+            # 获取可用的串口列表
+            available_ports = RTKModule.list_available_ports()
+            if available_ports:
+                self.rtk_port_combo.addItems(available_ports)
+                # 尝试恢复之前选择的串口，如果不存在则选择第一个
+                if current_port and current_port in available_ports:
+                    self.rtk_port_combo.setCurrentText(current_port)
+                else:
+                    self.rtk_port_combo.setCurrentText(available_ports[0])
+                self.log_message(f"发现 {len(available_ports)} 个可用串口")
             else:
-                self.rtk_port_combo.setCurrentText(available_ports[0])
-        else:
-            # 如果没有检测到串口，则添加常见的Windows串口
-            common_ports = ['COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 
-                           'COM9', 'COM10', 'COM11', 'COM12', 'COM13', 'COM14', 'COM15', 'COM16']
-            self.rtk_port_combo.addItems(common_ports)
-            # 尝试恢复之前选择的串口，如果不存在则选择COM11
-            if current_port and current_port in common_ports:
-                self.rtk_port_combo.setCurrentText(current_port)
-            else:
-                self.rtk_port_combo.setCurrentText('COM11')
+                # 如果没有检测到串口，则留空并提示
+                common_ports = ['No Available Serial Port']
+                self.rtk_port_combo.addItems(common_ports)
+                self.log_message("未发现可用串口，使用默认串口列表")
+        except Exception as e:
+            self.log_message(f"刷新RTK串口列表失败: {str(e)}")
+            # 出错时使用模拟数据
+            self.rtk_port_combo.clear()
+            self.rtk_port_combo.addItems(['COM11'])
+            self.rtk_port_combo.setCurrentText('COM11')
 
     def create_data_config_section(self):
         """创建数据采集配置区域"""
@@ -530,7 +534,7 @@ class VNAControllerGUI(FluentWindow):
 
         # 创建采集模式选择区域
         mode_group = QGroupBox("采集模式选择")
-        mode_group_layout = QVBoxLayout(mode_group)
+        mode_group_layout = QHBoxLayout(mode_group)  # 使用水平布局，将标签和组合框放在同一行
         mode_group_layout.setSpacing(self.spacing)
         mode_group_layout.setContentsMargins(15, 15, 15, 15)
         
@@ -541,10 +545,12 @@ class VNAControllerGUI(FluentWindow):
         
         self.mode_combo = ComboBox()
         self.mode_combo.addItems(['点测模式', '定次采集模式', '连续采集模式'])
-        self.mode_combo.setCurrentIndex(0)
+        self.mode_combo.setCurrentIndex(2)  # 默认连续采集模式
         # 连接模式变化信号
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
         mode_group_layout.addWidget(self.mode_combo)
+        
+        mode_group_layout.addStretch()  # 添加弹性空间，将组合框推到右边
         
         # 将模式选择区域添加到主布局
         self.main_layout.addWidget(mode_group)
@@ -691,131 +697,178 @@ class VNAControllerGUI(FluentWindow):
         """开关RTK模块"""
         if checked:
             self.log_message("正在启用RTK模块...")
-            try:
-                # 获取选择的串口和波特率
-                selected_port = self.rtk_port_combo.currentText()
-                selected_baudrate = int(self.rtk_baudrate_combo.currentText())
-                # 更新RTK模块实例
-                self.rtk_module = RTKModule(port=selected_port, baudrate=selected_baudrate)
+            # 禁用开关防止重复操作
+            self.rtk_enable_switch.setEnabled(False)
+            
+            # 使用QThread在后台线程中启用RTK模块，避免阻塞主线程
+            from PyQt6.QtCore import QThread, pyqtSignal
+            
+            class RTKEnableThread(QThread):
+                """在后台线程中启用RTK模块的线程类"""
                 
-                # 先连接信号再启动模块，确保不会错过任何数据
-                self.rtk_module.rtk_data_updated.connect(self.update_rtk_data)
-                self.rtk_module.rtk_error_occurred.connect(self.handle_rtk_error)
-                self.rtk_module.rtk_module_info_received.connect(self.display_rtk_module_info)
+                # 定义信号
+                success = pyqtSignal(str, str)  # 成功信号，传递串口和波特率
+                failure = pyqtSignal(str)  # 失败信号，传递错误信息
+                
+                def __init__(self, parent, selected_port, selected_baudrate):
+                    super().__init__(parent)
+                    self.selected_port = selected_port
+                    self.selected_baudrate = selected_baudrate
+                    self.parent = parent
+                
+                def run(self):
+                    """线程运行函数"""
+                    try:
+                        # 更新RTK模块实例
+                        self.parent.rtk_module = RTKModule(port=self.selected_port, baudrate=self.selected_baudrate)
+                        
+                        # 先连接信号再启动模块，确保不会错过任何数据
+                        self.parent.rtk_module.rtk_data_updated.connect(self.parent.update_rtk_data)
+                        self.parent.rtk_module.rtk_error_occurred.connect(self.parent.handle_rtk_error)
+                        self.parent.rtk_module.rtk_module_info_received.connect(self.parent.display_rtk_module_info)
 
-                # 连接并启动RTK模块
-                if self.rtk_module.connect():
-
-                    if self.rtk_module.start():
-                        self.rtk_enabled = True
-                        
-                        # 如果RTK数据存储已启用，则设置数据文件
-                        if self.rtk_data_storage_enabled:
-                            self.setup_rtk_data_file()
-                            
-                        self.log_message("RTK模块已启用")
-                        
-                        # 设置RTK模块的采样频率
-                        current_frequency_text = self.rtk_storage_combo.currentText()
-                        self.change_rtk_storage_frequency(current_frequency_text)
-                        
-                        # 重新配置定时器：不完全停止，而是降低频率
-                        if self.system_timer and self.system_timer.isActive():
-                            self.system_timer.stop()
-                            # 设置一个备用定时器，以防RTK数据中断
-                            self.system_timer.start(5000)  # 每5秒更新一次作为备用
-                        
-                        InfoBar.success(
-                            title='RTK模块',
-                            content=f'RTK模块已在 {selected_port} 上启用，波特率: {selected_baudrate}',
-                            orient=Qt.Orientation.Horizontal,
-                            isClosable=True,
-                            position=InfoBarPosition.TOP,
-                            duration=2000,
-                            parent=self
-                        )
-                    else:
-                        self.log_message("启动RTK模块失败")
-                        # 清理信号连接
-                        self.rtk_module.rtk_data_updated.disconnect()
-                        self.rtk_module.rtk_error_occurred.disconnect()
-                        self.rtk_module.rtk_module_info_received.disconnect()
-                        InfoBar.error(
-                            title='RTK模块',
-                            content='启动RTK模块失败',
-                            orient=Qt.Orientation.Horizontal,
-                            isClosable=True,
-                            position=InfoBarPosition.TOP,
-                            duration=2000,
-                            parent=self
-                        )
-                        self.rtk_enable_switch.setChecked(False)
-                else:
-                    self.log_message("连接RTK模块失败")
-                    # 清理信号连接
-                    self.rtk_module.rtk_data_updated.disconnect()
-                    self.rtk_module.rtk_error_occurred.disconnect()
-                    self.rtk_module.rtk_module_info_received.disconnect()
-                    InfoBar.error(
-                        title='RTK模块',
-                        content='连接RTK模块失败',
-                        orient=Qt.Orientation.Horizontal,
-                        isClosable=True,
-                        position=InfoBarPosition.TOP,
-                        duration=2000,
-                        parent=self
-                    )
-                    self.rtk_enable_switch.setChecked(False)
-            except Exception as e:
-                self.log_message(f"启用RTK模块失败: {str(e)}")
-                InfoBar.error(
-                    title='RTK模块',
-                    content=f'启用RTK模块失败: {str(e)}',
-                    orient=Qt.Orientation.Horizontal,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=2000,
-                    parent=self
-                )
-                self.rtk_enable_switch.setChecked(False)
+                        # 启动RTK模块
+                        if self.parent.rtk_module.connect():
+                            if self.parent.rtk_module.start():
+                                self.parent.rtk_enabled = True
+                                
+                                # 如果RTK数据存储已启用，则设置数据文件
+                                if self.parent.rtk_data_storage_enabled:
+                                    self.parent.setup_rtk_data_file()
+                                    
+                                # 设置RTK模块的采样频率
+                                current_frequency_text = self.parent.rtk_storage_combo.currentText()
+                                self.parent.change_rtk_storage_frequency(current_frequency_text)
+                                
+                                # 重新配置定时器：不完全停止，而是降低频率
+                                if self.parent.system_timer and self.parent.system_timer.isActive():
+                                    self.parent.system_timer.stop()
+                                    # 设置一个备用定时器，以防RTK数据中断
+                                    self.parent.system_timer.start(5000)  # 每5秒更新一次作为备用
+                                
+                                self.success.emit(self.selected_port, str(self.selected_baudrate))
+                            else:
+                                # 启动失败，清理资源
+                                self.parent.rtk_module.rtk_data_updated.disconnect()
+                                self.parent.rtk_module.rtk_error_occurred.disconnect()
+                                self.parent.rtk_module.rtk_module_info_received.disconnect()
+                                self.failure.emit("启动RTK模块失败")
+                        else:
+                            # 连接失败，清理资源
+                            self.parent.rtk_module.rtk_data_updated.disconnect()
+                            self.parent.rtk_module.rtk_error_occurred.disconnect()
+                            self.parent.rtk_module.rtk_module_info_received.disconnect()
+                            self.failure.emit("连接RTK模块失败")
+                    except Exception as e:
+                        self.failure.emit(f"启用RTK模块失败: {str(e)}")
+            
+            # 获取选择的串口和波特率
+            selected_port = self.rtk_port_combo.currentText()
+            selected_baudrate = int(self.rtk_baudrate_combo.currentText())
+            
+            # 创建并启动线程
+            self.rtk_enable_thread = RTKEnableThread(self, selected_port, selected_baudrate)
+            self.rtk_enable_thread.success.connect(self.on_rtk_enable_success)
+            self.rtk_enable_thread.failure.connect(self.on_rtk_enable_failure)
+            self.rtk_enable_thread.finished.connect(lambda: self.rtk_enable_switch.setEnabled(True))
+            self.rtk_enable_thread.start()
         else:
             self.log_message("正在禁用RTK模块...")
-            try:
-                # 关闭RTK数据文件
-                if self.rtk_module and self.rtk_data_file:
-                    self.rtk_module.close_data_file()
-                    self.rtk_data_file = None
-                    
-                # 断开RTK模块
-                if self.rtk_module:
-                    self.rtk_module.disconnect()
-                    try:
-                        self.rtk_module.rtk_data_updated.disconnect()
-                        self.rtk_module.rtk_error_occurred.disconnect()
-                        self.rtk_module.rtk_module_info_received.disconnect()
-                    except TypeError:
-                        # 如果信号未连接就断开，会抛出TypeError，忽略即可
-                        pass
-                    self.rtk_enabled = False
-                    port = self.rtk_port_combo.currentText()
-                    self.log_message(f"RTK模块已禁用 (串口: {port})")
-                    
-                    # 恢复系统定时器为正常频率
-                    if self.system_timer:
-                        self.system_timer.stop()
-                        self.system_timer.start(1000)  # 恢复每秒更新
+            # 禁用开关防止重复操作
+            self.rtk_enable_switch.setEnabled(False)
+            
+            # 使用QThread在后台线程中禁用RTK模块，避免阻塞主线程
+            from PyQt6.QtCore import QThread, pyqtSignal
+            
+            class RTKDisableThread(QThread):
+                """在后台线程中禁用RTK模块的线程类"""
                 
-                InfoBar.info(
-                    title='RTK已禁用',
-                    content=f'RTK模块已从串口 {port} 断开',
-                    orient=Qt.Orientation.Horizontal,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=2000,
-                    parent=self
-                )
-            except Exception as e:
-                self.log_message(f"禁用RTK模块时出错: {str(e)}")
+                # 定义信号
+                finished = pyqtSignal()  # 完成信号
+                
+                def __init__(self, parent):
+                    super().__init__(parent)
+                    self.parent = parent
+                
+                def run(self):
+                    """线程运行函数"""
+                    try:
+                        # 关闭RTK数据文件
+                        if self.parent.rtk_module and self.parent.rtk_data_file:
+                            self.parent.rtk_module.close_data_file()
+                            self.parent.rtk_data_file = None
+                        
+                        # 断开RTK模块
+                        if self.parent.rtk_module:
+                            self.parent.rtk_module.disconnect()
+                            try:
+                                self.parent.rtk_module.rtk_data_updated.disconnect()
+                                self.parent.rtk_module.rtk_error_occurred.disconnect()
+                                self.parent.rtk_module.rtk_module_info_received.disconnect()
+                            except TypeError:
+                                # 如果信号未连接就断开，会抛出TypeError，忽略即可
+                                pass
+                            self.parent.rtk_enabled = False
+                            port = self.parent.rtk_port_combo.currentText()
+                            self.parent.log_message(f"RTK模块已禁用 (串口: {port})")
+                            
+                            # 恢复系统定时器为正常频率
+                            if self.parent.system_timer:
+                                self.parent.system_timer.stop()
+                                self.parent.system_timer.start(1000)  # 恢复每秒更新
+                        
+                        self.finished.emit()
+                    except Exception as e:
+                        self.parent.log_message(f"禁用RTK模块时出错: {str(e)}")
+                        self.finished.emit()
+            
+            # 创建并启动线程
+            self.rtk_disable_thread = RTKDisableThread(self)
+            self.rtk_disable_thread.finished.connect(self.on_rtk_disable_finished)
+            self.rtk_disable_thread.start()
+    
+    def on_rtk_enable_success(self, port, baudrate):
+        """RTK模块启用成功后的处理"""
+        self.log_message("RTK模块已启用")
+        InfoBar.success(
+            title='RTK模块',
+            content=f'RTK模块已在 {port} 上启用，波特率: {baudrate}',
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
+    
+    def on_rtk_enable_failure(self, error_msg):
+        """RTK模块启用失败后的处理"""
+        self.log_message(error_msg)
+        InfoBar.error(
+            title='RTK模块',
+            content=error_msg,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
+        self.rtk_enable_switch.setChecked(False)
+    
+    def on_rtk_disable_finished(self):
+        """RTK模块禁用完成后的处理"""
+        # 重新启用开关
+        self.rtk_enable_switch.setEnabled(True)
+        # 显示信息
+        port = self.rtk_port_combo.currentText()
+        InfoBar.info(
+            title='RTK已禁用',
+            content=f'RTK模块已从串口 {port} 断开',
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
 
     def toggle_rtk_data_storage(self, checked):
         """开关RTK数据存储"""
@@ -969,49 +1022,78 @@ class VNAControllerGUI(FluentWindow):
 
     def connect_device(self):
         """连接到VNA设备"""
-        try:
-            device_address = self.device_combo.currentText()
-            self.log_message(f"正在连接到设备: {device_address}")
+        # 获取设备地址
+        device_address = self.device_combo.currentText()
+        self.log_message(f"正在连接到设备: {device_address}")
+        
+        # 禁用连接按钮防止重复操作
+        self.connect_button.setEnabled(False)
+        
+        # 使用QThread在后台线程中连接设备，避免阻塞主线程
+        from PyQt6.QtCore import QThread, pyqtSignal
+        
+        class DeviceConnectThread(QThread):
+            """在后台线程中连接设备的线程类"""
             
-            # 创建VNA控制器实例（不传递设备地址）
-            self.vna_controller = VNAController()
+            # 定义信号
+            success = pyqtSignal(str)  # 成功信号，传递设备地址
+            failure = pyqtSignal(str, str)  # 失败信号，传递设备地址和错误信息
             
-            # 使用open_device方法连接设备
-            if self.vna_controller.open_device(device_address):
-                self.device_connected = True
-                self.update_device_status()
-                self.log_message(f"成功连接到设备: {device_address}")
-                InfoBar.success(
-                    title='设备连接',
-                    content=f'成功连接到设备: {device_address}',
-                    orient=Qt.Orientation.Horizontal,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=2000,
-                    parent=self
-                )
-            else:
-                self.log_message(f"连接设备失败: {device_address}")
-                InfoBar.error(
-                    title='设备连接',
-                    content=f'连接设备失败: {device_address}',
-                    orient=Qt.Orientation.Horizontal,
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=2000,
-                    parent=self
-                )
-        except Exception as e:
-            self.log_message(f"连接设备时发生错误: {str(e)}")
-            InfoBar.error(
-                title='设备连接',
-                content=f'连接设备时发生错误: {str(e)}',
-                orient=Qt.Orientation.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=2000,
-                parent=self
-            )
+            def __init__(self, parent, device_address):
+                super().__init__(parent)
+                self.device_address = device_address
+                self.parent = parent
+            
+            def run(self):
+                """线程运行函数"""
+                try:
+                    # 创建VNA控制器实例
+                    vna_controller = VNAController()
+                    
+                    # 使用open_device方法连接设备
+                    if vna_controller.open_device(self.device_address):
+                        # 保存VNA控制器实例到父对象
+                        self.parent.vna_controller = vna_controller
+                        self.success.emit(self.device_address)
+                    else:
+                        self.failure.emit(self.device_address, "连接设备失败")
+                except Exception as e:
+                    self.failure.emit(self.device_address, f"连接设备时发生错误: {str(e)}")
+        
+        # 创建并启动线程
+        self.connect_thread = DeviceConnectThread(self, device_address)
+        self.connect_thread.success.connect(self.on_device_connect_success)
+        self.connect_thread.failure.connect(self.on_device_connect_failure)
+        self.connect_thread.finished.connect(lambda: self.connect_button.setEnabled(True))
+        self.connect_thread.start()
+    
+    def on_device_connect_success(self, device_address):
+        """设备连接成功后的处理"""
+        self.device_connected = True
+        self.update_device_status()
+        self.log_message(f"成功连接到设备: {device_address}")
+        InfoBar.success(
+            title='设备连接',
+            content=f'成功连接到设备: {device_address}',
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
+    
+    def on_device_connect_failure(self, device_address, error_msg):
+        """设备连接失败后的处理"""
+        self.log_message(f"{error_msg}: {device_address}")
+        InfoBar.error(
+            title='设备连接',
+            content=f'{error_msg}: {device_address}',
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
 
     def disconnect_device(self):
         """断开与VNA设备的连接"""

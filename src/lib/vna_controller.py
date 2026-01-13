@@ -79,6 +79,9 @@ class VNAController:
             logger.debug(f"Opening device: {resource_name}")
             # 在打开新设备前确保之前的设备已关闭
             self.close_device()
+            
+            # 直接尝试打开设备，不再检查设备是否在可用列表中
+            # 这样允许用户手动输入设备地址连接
             self.P9371B_VISA = self.rm.open_resource(resource_name)
             # 设置默认超时时间
             self.P9371B_VISA.timeout = 5000  # 5秒超时
@@ -99,13 +102,7 @@ class VNAController:
         if self.P9371B_VISA:
             try:
                 logger.debug("Closing device")
-                # 先清除设备状态
-                try:
-                    if hasattr(self.P9371B_VISA, 'clear'):
-                        self.P9371B_VISA.clear()
-                except Exception as e:
-                    logger.warning(f"Could not clear device: {e}")
-                
+                # 不使用clear操作，直接关闭设备，避免不必要的警告
                 self.P9371B_VISA.close()
                 logger.debug("Device closed successfully")
             except visa.VisaIOError as e:
