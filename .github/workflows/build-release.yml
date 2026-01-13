@@ -40,6 +40,30 @@ jobs:
         echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
       shell: powershell
 
+    - name: Generate release notes
+      id: generate_release_notes
+      run: |
+        # 获取从上次标签到当前标签的提交记录作为更新说明
+        # 如果是第一次发布，获取所有提交记录
+        $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+        if ($previousTag) {
+          # 有之前的标签，获取两次标签之间的提交
+          $releaseNotes = git log --oneline --no-merges $previousTag..HEAD
+        } else {
+          # 第一次发布，获取所有提交
+          $releaseNotes = git log --oneline --no-merges
+        }
+        
+        # 格式化发布说明
+        $formattedNotes = "## 更新说明\n\n"
+        $formattedNotes += $releaseNotes | ForEach-Object { "- $_" } | Out-String
+        
+        # 保存到环境变量
+        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
+        echo "$formattedNotes" >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
+      shell: powershell
+
     - name: Package build output into zip file
       run: |
         cd src/dist
@@ -69,4 +93,5 @@ jobs:
           # 上传带版本号的安装包
           src/gpr_daq_gui_v${{ steps.get_version.outputs.VERSION }}_installer.exe
         tag_name: ${{ github.ref_name }}
+        body: ${{ steps.generate_release_notes.outputs.RELEASE_NOTES }}
         overwrite_files: true
