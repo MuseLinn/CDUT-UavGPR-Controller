@@ -63,60 +63,49 @@ jobs:
       id: generate_release_notes
       run: |
         # 获取所有标签并按创建日期降序排序
-        $allTags = git tag --sort=-creatordate
+        $allTags = git tag --sort=-creatordate 2>$null
         $tagCount = $allTags.Count
         $currentTag = ${{ github.ref_name }}
         $version = "${{ steps.get_version.outputs.VERSION }}"
         
-        # 生成提交记录
+        # 获取提交记录
+        $previousTag = ""
         if ($tagCount -gt 1) {
-          # 有多个标签，获取当前标签和上一个标签
           $currentTagIndex = $allTags.IndexOf($currentTag)
-          
           if ($currentTagIndex -ne -1 -and $currentTagIndex -lt $tagCount - 1) {
-            # 当前标签在列表中，且不是最后一个标签
             $previousTag = $allTags[$currentTagIndex + 1]
-            $commits = git log $previousTag..$currentTag --pretty=format:"- %s (%h)"
-          } else {
-            # 无法确定上一个标签，获取所有提交
-            $commits = git log --pretty=format:"- %s (%h)"
           }
+        }
+        
+        # 生成提交记录
+        if ($previousTag) {
+          $commits = git log $previousTag..$currentTag --oneline --no-merges
         } else {
-          # 只有一个标签或没有标签，获取所有提交
-          $commits = git log --pretty=format:"- %s (%h)"
+          $commits = git log --oneline --no-merges
+        }
+        
+        # 格式化提交记录
+        $formattedCommits = @()
+        foreach ($commit in $commits) {
+          $formattedCommits += "- $commit"
         }
         
         # 如果没有提交记录，设置默认值
-        if (-not $commits) {
-          $commits = "- 暂无提交记录"
+        if ($formattedCommits.Count -eq 0) {
+          $formattedCommits = "- 暂无提交记录"
         }
         
-        # 拼接发布说明内容
-        $releaseNotes = @"
-## 🚀 版本 v$version 发布
-
-### 📦 打包信息
-- 安装包版本：v$version
-- 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-- 系统环境：Windows Latest (GitHub Action)
-
-### 📝 本次更新（提交记录）
-$commits
-
-### 📌 安装说明
-1. 下载下方的安装包 `gpr_daq_gui_v$version_installer.exe`；
-2. 双击运行，按提示完成安装；
-3. 支持Windows 7及以上系统（管理员权限可选）。
-
-### ⚠️ 注意事项
-- 安装前请关闭旧版本程序；
-- 如遇权限问题，右键以管理员身份运行安装包。
-"@
+        # 创建发布说明
+        $releaseNotes = "## 版本 v$version 发布`r`n`r`n"
+        $releaseNotes += "### 打包信息`r`n"
+        $releaseNotes += "- 安装包版本：v$version`r`n"
+        $releaseNotes += "- 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`r`n"
+        $releaseNotes += "- 系统环境：Windows Latest (GitHub Action)`r`n`r`n"
+        $releaseNotes += "### 本次更新（提交记录）`r`n"
+        $releaseNotes += $formattedCommits -join "`r`n"
         
-        # 将生成的说明输出到步骤输出
-        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
-        echo "$releaseNotes" >> $env:GITHUB_OUTPUT
-        echo "EOF" >> $env:GITHUB_OUTPUT
+        # 输出到步骤输出
+        echo "RELEASE_NOTES=$releaseNotes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       shell: powershell
 
     - name: Upload binaries to release
