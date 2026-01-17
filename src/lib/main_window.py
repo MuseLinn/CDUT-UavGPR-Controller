@@ -27,7 +27,12 @@ from qfluentwidgets import (
     FluentWindow, FluentIcon, PrimaryPushButton, PushButton, EditableComboBox as ComboBox, SpinBox, DoubleSpinBox,
     LineEdit, ProgressBar, SplashScreen,
     InfoBar, InfoBarPosition, FluentIcon as FIF,
-    ComboBoxSettingCard, SwitchButton, CheckBox, HeaderCardWidget, BodyLabel  # 添加RTK状态栏需要的组件
+    ComboBoxSettingCard, SwitchButton, CheckBox, HeaderCardWidget, BodyLabel,
+    CardWidget, GroupHeaderCardWidget, SimpleCardWidget,
+    TitleLabel, SubtitleLabel, CaptionLabel,
+    SegmentedWidget, SegmentedItem,
+    ScrollArea, ImageLabel,
+    ColorDialog, Theme
 )
 
 # 导入自定义模块
@@ -130,8 +135,8 @@ class VNAControllerGUI(FluentWindow):
         """初始化用户界面组件"""
         # 设置窗口标题和大小
         self.setWindowTitle('低频无人机航空探地雷达装备及配套软件研发')
-        # self.resize(1200, 900)
-        # self.setMinimumSize(1200, 900)
+        self.resize(1200, 900)
+        self.setMinimumSize(1000, 700)
         root = QFileInfo(__file__).absolutePath()
         self.setWindowIcon(QIcon(root + '/app_logo.png'))
         # 创建启动页面
@@ -154,7 +159,7 @@ class VNAControllerGUI(FluentWindow):
             self.homeInterface.setObjectName("homeInterface")  # 添加对象名称
 
         # 初始化spacing属性
-        self.spacing = 10
+        self.spacing = 15
         
         # 初始化系统定时器，用于更新系统时间
         self.system_timer = QTimer()
@@ -164,28 +169,51 @@ class VNAControllerGUI(FluentWindow):
         # 创建主水平布局
         main_h_layout = QHBoxLayout(self.homeInterface)
         main_h_layout.setSpacing(self.spacing)
-        main_h_layout.setContentsMargins(15, 15, 15, 15)
+        main_h_layout.setContentsMargins(20, 20, 20, 20)
 
-        # 创建左侧配置区域
+        # 创建左侧配置区域（带滚动功能）
+        left_scroll_area = ScrollArea()
+        left_scroll_area.setWidgetResizable(True)
+        left_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll_area.setFixedWidth(450)
+        left_scroll_area.setStyleSheet("background-color: transparent; border: none;")
+        
         self.config_widget = QWidget()
+        self.config_widget.setFixedWidth(430)
+        self.config_widget.setStyleSheet("background-color: transparent;")
         self.main_layout = QVBoxLayout(self.config_widget)
         self.main_layout.setSpacing(self.spacing)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建标题
-        # self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板v0.9Rev2')
-        self.title_label = QLabel('CDUT-UavGPR探地雷达采集控制面板')
-        self.title_label.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
+        title_widget = QWidget()
+        title_layout = QVBoxLayout(title_widget)
+        title_layout.setContentsMargins(0, 10, 0, 10)
+        
+        self.title_label = TitleLabel('CDUT-UavGPR探地雷达采集控制面板')
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setStyleSheet("color: #007acc; margin: 10px 0;")
-        self.main_layout.addWidget(self.title_label)
+        self.title_label.setFont(QFont('Microsoft YaHei', 11, QFont.Weight.Bold))
+        
+        title_layout.addWidget(self.title_label)
+        
+        self.main_layout.addWidget(title_widget)
 
         # 创建设备控制区域
         self.create_control_section()
-        # 数据采集配置区域
-        self.create_data_config_section()
+        
         # 采集模式区域
         self.create_acquisition_mode_section()
+        
+        # 创建RTK状态栏（移到左侧）
+        self.create_rtk_status_bar()
+        if self.rtk_status_bar:
+            self.main_layout.addWidget(self.rtk_status_bar)
+        
+        # 数据采集配置区域
+        self.create_data_config_section()
+
+        # 将配置组件添加到滚动区域
+        left_scroll_area.setWidget(self.config_widget)
 
         # 创建右侧状态信息区域
         self.status_widget = QWidget()
@@ -193,17 +221,13 @@ class VNAControllerGUI(FluentWindow):
         status_layout.setSpacing(self.spacing)
         status_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 创建状态信息区域（这里会自动创建并添加RTK状态栏）
+        # 创建状态信息区域（不包含RTK状态栏）
         self.create_status_section()
         status_layout.addWidget(self.status_group)
 
-        # 创建底部RTK状态栏
-        # 删除这行，因为RTK状态栏已经在create_status_section中创建和添加了
-        # self.create_rtk_status_bar()
-
         # 将左右区域添加到主布局
-        main_h_layout.addWidget(self.config_widget, 4)  # 左侧配置区域占4份
-        main_h_layout.addWidget(self.status_widget, 3)  # 右侧状态区域占3份
+        main_h_layout.addWidget(left_scroll_area)  # 左侧配置区域使用固定宽度
+        main_h_layout.addWidget(self.status_widget, 1)  # 右侧状态区域自动填充剩余空间
 
         # 添加界面到 FluentWindow
         self.initNavigation()
@@ -303,43 +327,46 @@ class VNAControllerGUI(FluentWindow):
         self.setup_layout.setContentsMargins(15, 15, 15, 15)
         
         # 设置界面标题
-        setup_title = QLabel('系统设置')
-        setup_title.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
+        setup_title = SubtitleLabel('系统设置')
+        setup_title.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
         setup_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        setup_title.setStyleSheet("color: #007acc; margin: 10px 0 20px 0;")
         self.setup_layout.addWidget(setup_title)
         
         # 使用滚动区域避免界面拥挤
-        scroll_area = QScrollArea()
+        scroll_area = ScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { border: none; }")
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setSpacing(self.spacing)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         
         # RTK定位模块设置区域
-        rtk_group = QGroupBox("RTK定位模块设置")
-        rtk_layout = QVBoxLayout(rtk_group)
+        rtk_card = CardWidget()
+        rtk_layout = QVBoxLayout(rtk_card)
         rtk_layout.setSpacing(self.spacing)
         rtk_layout.setContentsMargins(15, 15, 15, 15)
         
+        # RTK标题
+        rtk_title = SubtitleLabel('RTK定位模块设置')
+        rtk_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        rtk_layout.addWidget(rtk_title)
+        
         # RTK串口选择和控制行
         rtk_control_layout = QHBoxLayout()
-        rtk_port_label = QLabel('RTK串口:')
+        rtk_port_label = CaptionLabel('RTK串口:')
         self.rtk_port_combo = ComboBox()
         # 获取可用的串口列表
         self.refresh_rtk_ports()
         
-        rtk_refresh_button = PushButton('刷新')
+        rtk_refresh_button = PushButton('刷新', icon=FIF.SYNC)
         rtk_refresh_button.clicked.connect(self.refresh_rtk_ports)
         
-        rtk_enable_label = QLabel('启用:')
+        rtk_enable_label = CaptionLabel('启用:')
         self.rtk_enable_switch = SwitchButton()
         self.rtk_enable_switch.setChecked(False)
         
         # RTK波特率选择
-        rtk_baudrate_label = QLabel('波特率:')
+        rtk_baudrate_label = CaptionLabel('波特率:')
         self.rtk_baudrate_combo = ComboBox()
         # 获取支持的波特率列表
         supported_baudrates = RTKModule.get_baudrates()
@@ -358,13 +385,13 @@ class VNAControllerGUI(FluentWindow):
         
         # RTK经纬度高程采样存储频率选择和存储开关
         rtk_storage_layout = QHBoxLayout()
-        rtk_storage_label = QLabel('经纬度高程数据采样频率:')
+        rtk_storage_label = CaptionLabel('经纬度高程数据采样频率:')
         self.rtk_storage_combo = ComboBox()
         self.rtk_storage_combo.addItems(['1Hz', '2Hz', '5Hz', '10Hz', '20Hz'])
         self.rtk_storage_combo.setCurrentText('2Hz')
         
         # 添加RTK数据存储开关
-        rtk_data_storage_label = QLabel('存储RTK数据:')
+        rtk_data_storage_label = CaptionLabel('存储RTK数据:')
         self.rtk_data_storage_switch = SwitchButton()
         self.rtk_data_storage_switch.setChecked(True)  # 默认开启存储
         
@@ -378,10 +405,15 @@ class VNAControllerGUI(FluentWindow):
         rtk_layout.addLayout(rtk_storage_layout)
         
         # 数据采集设置区域
-        acquisition_group = QGroupBox("数据采集设置")
-        acquisition_layout = QVBoxLayout(acquisition_group)
+        acquisition_card = CardWidget()
+        acquisition_layout = QVBoxLayout(acquisition_card)
         acquisition_layout.setSpacing(self.spacing)
         acquisition_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 数据采集设置标题
+        acquisition_title = SubtitleLabel('数据采集设置')
+        acquisition_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        acquisition_layout.addWidget(acquisition_title)
         
         # 数据获取方式设置
         # 创建一个美观的设置项
@@ -390,11 +422,8 @@ class VNAControllerGUI(FluentWindow):
         data_acquisition_layout.setContentsMargins(0, 0, 0, 0)
         
         # 添加标题和内容
-        title_label = QLabel("数据获取方式")
-        title_label.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
-        content_label = QLabel("选择A-Scan数据的获取和存储方式")
-        content_label.setFont(QFont('Microsoft YaHei', 9))
-        content_label.setStyleSheet("color: #666666;")
+        title_label = CaptionLabel("数据获取方式")
+        content_label = BodyLabel("选择A-Scan数据的获取和存储方式")
         
         # 添加ComboBox
         self.data_acquisition_combo = ComboBox()
@@ -409,8 +438,8 @@ class VNAControllerGUI(FluentWindow):
         
         acquisition_layout.addWidget(data_acquisition_widget)
         
-        scroll_layout.addWidget(rtk_group)
-        scroll_layout.addWidget(acquisition_group)
+        scroll_layout.addWidget(rtk_card)
+        scroll_layout.addWidget(acquisition_card)
         scroll_layout.addStretch()
         
         scroll_area.setWidget(scroll_content)
@@ -432,44 +461,49 @@ class VNAControllerGUI(FluentWindow):
 
     def create_control_section(self):
         """创建设备控制区域"""
-        # 设备控制标题
-        control_label = QLabel('设备控制')
-        control_label.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
-        self.main_layout.addWidget(control_label)
-
         # 创建连接区域容器
-        connection_group = QGroupBox("连接参数")
-        connection_group_layout = QVBoxLayout(connection_group)
-        connection_group_layout.setSpacing(self.spacing)
-        connection_group_layout.setContentsMargins(15, 15, 15, 15)
+        connection_card = CardWidget()
+        connection_layout = QVBoxLayout(connection_card)
+        connection_layout.setSpacing(self.spacing)
+        connection_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 设备控制标题
+        control_label = SubtitleLabel('设备控制')
+        control_label.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        connection_layout.addWidget(control_label)
 
         # 设备连接控件
-        connection_layout = QHBoxLayout()
-
-        device_label = QLabel('设备地址:')
+        device_layout = QHBoxLayout()
+        
+        device_label = CaptionLabel('设备地址:')
         self.device_combo = ComboBox()
         # PyQt6-Fluent-Widgets EditableComboBox是可编辑的，只需设置LineEdit为可编辑即可
         self.device_combo.addItems(['TCPIP0::DESKTOP-U2340VT::hislip_PXI0_CHASSIS1_SLOT1_INDEX0::INSTR'])
         self.device_combo.setCurrentText('TCPIP0::DESKTOP-U2340VT::hislip_PXI0_CHASSIS1_SLOT1_INDEX0::INSTR')
-        self.device_combo.setMinimumWidth(200)
+        self.device_combo.setMinimumWidth(250)
 
-        self.refresh_button = PushButton('刷新设备')
-        self.connect_button = PrimaryPushButton(FluentIcon.CONNECT, '连接')
-        self.disconnect_button = PushButton('断开')
+        device_layout.addWidget(device_label)
+        device_layout.addWidget(self.device_combo, 1)  # 添加拉伸因子，占满剩余空间
+        connection_layout.addLayout(device_layout)
+
+        # 控制按钮布局
+        button_layout = QHBoxLayout()
+        
+        self.refresh_button = PushButton('刷新', icon=FIF.SYNC)
+        self.connect_button = PrimaryPushButton('连接', icon=FIF.CONNECT)
+        self.disconnect_button = PushButton('断开', icon=FIF.CLOSE)
         self.disconnect_button.setEnabled(False)
-        self.get_id_button = PushButton('获取设备ID')
+        self.get_id_button = PushButton('获取ID', icon=FIF.INFO)
         self.get_id_button.setEnabled(False)
 
-        connection_layout.addWidget(device_label)
-        connection_layout.addWidget(self.device_combo, 2)  # 添加拉伸因子，占满剩余空间
-        connection_layout.addWidget(self.refresh_button)
-        connection_layout.addWidget(self.connect_button)
-        connection_layout.addWidget(self.disconnect_button)
-        connection_layout.addWidget(self.get_id_button)
-        connection_layout.addStretch()
+        button_layout.addWidget(self.refresh_button)
+        button_layout.addWidget(self.connect_button)
+        button_layout.addWidget(self.disconnect_button)
+        button_layout.addWidget(self.get_id_button)
+        
+        connection_layout.addLayout(button_layout)
 
-        connection_group_layout.addLayout(connection_layout)
-        self.main_layout.addWidget(connection_group)
+        self.main_layout.addWidget(connection_card)
 
         # RTK控制区域
         # RTK设置已移至设置界面
@@ -560,68 +594,79 @@ class VNAControllerGUI(FluentWindow):
 
     def create_data_config_section(self):
         """创建数据采集配置区域"""
+        # 创建存储配置卡片
+        storage_card = CardWidget()
+        storage_layout = QVBoxLayout(storage_card)
+        storage_layout.setSpacing(self.spacing)
+        storage_layout.setContentsMargins(15, 15, 15, 15)
+        
         # 数据配置标题
-        config_label = QLabel('A-scan采集配置')
-        config_label.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
-        self.main_layout.addWidget(config_label)
-
-        # 创建控制区域容器
-        control_group = QGroupBox("存储配置")
-        control_group_layout = QVBoxLayout(control_group)
-        control_group_layout.setSpacing(self.spacing)
-        control_group_layout.setContentsMargins(15, 15, 15, 15)
+        config_label = SubtitleLabel('A-scan采集配置')
+        config_label.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        storage_layout.addWidget(config_label)
 
         # 设备控制按钮
-        control_layout = QHBoxLayout()
+        path_layout = QVBoxLayout()
 
-        path_label = QLabel('路径:')
+        # 存储路径输入行
+        path_input_layout = QHBoxLayout()
+        path_label = CaptionLabel('存储路径:')
         self.path_line_edit = LineEdit()
         # 自动根据电脑用户设置默认的路径
         desktop_path = os.path.join(os.path.expanduser("~"), "Documents")
         self.path_line_edit.setText(desktop_path)
         self.path_line_edit.setMinimumWidth(300)
+        path_input_layout.addWidget(path_label)
+        path_input_layout.addWidget(self.path_line_edit, 1)
 
-        self.catalog_button = PushButton('查看目录')
+        # 按钮行
+        path_buttons_layout = QHBoxLayout()
+        self.catalog_button = PushButton('查看目录', icon=FIF.FOLDER)
         self.catalog_button.setEnabled(False)
-        self.browse_dir_button = PushButton('选择目录')
+        self.browse_dir_button = PushButton('选择目录', icon=FIF.FOLDER)
         self.browse_dir_button.setEnabled(False)
-        self.change_dir_button = PushButton('切换目录')
+        self.change_dir_button = PushButton('切换目录', icon=FIF.FOLDER)
         self.change_dir_button.setEnabled(False)
+        path_buttons_layout.addWidget(self.catalog_button)
+        path_buttons_layout.addWidget(self.browse_dir_button)  # 添加浏览按钮
+        path_buttons_layout.addWidget(self.change_dir_button)
 
-        control_layout.addWidget(path_label)
-        control_layout.addWidget(self.path_line_edit, 2)
-        control_layout.addWidget(self.catalog_button)
-        control_layout.addWidget(self.browse_dir_button)  # 添加浏览按钮
-        control_layout.addWidget(self.change_dir_button)
-        control_layout.addStretch()
+        path_layout.addLayout(path_input_layout)
+        path_layout.addLayout(path_buttons_layout)
+        
+        storage_layout.addLayout(path_layout)
 
-        control_group_layout.addLayout(control_layout)
-        self.main_layout.addWidget(control_group)
+        self.main_layout.addWidget(storage_card)
 
-        # 创建配置区域容器
-        config_group = QGroupBox("配置参数")
-        config_group_layout = QVBoxLayout(config_group)
-        config_group_layout.setSpacing(self.spacing)
-        config_group_layout.setContentsMargins(15, 15, 15, 15)
+        # 创建配置参数卡片
+        config_card = CardWidget()
+        config_layout = QVBoxLayout(config_card)
+        config_layout.setSpacing(self.spacing)
+        config_layout.setContentsMargins(15, 15, 15, 15)
 
-        # 使用网格布局实现标签对齐
-        grid_layout = QGridLayout()
-        grid_layout.setHorizontalSpacing(15)
-        grid_layout.setVerticalSpacing(10)
+        # 使用垂直布局，利用上下滚动空间
+        config_items_layout = QVBoxLayout()
+        config_items_layout.setSpacing(10)
 
-        # 第一行控件
-        data_type_label = QLabel('数据类型:')
-        data_type_label.setMinimumWidth(80)  # 设置标签最小宽度以保证对齐
+        # 数据类型设置
+        data_type_layout = QHBoxLayout()
+        data_type_label = CaptionLabel('数据类型:')
+        data_type_label.setMinimumWidth(100)
         self.data_type_combo = ComboBox()
         self.data_type_combo.addItems([
             "CSV Formatted Data",
             "SDP Formatted Data",
             "SNP Formatted Data"
         ])
-        self.data_type_combo.setMinimumWidth(120)
+        self.data_type_combo.setMinimumWidth(250)
+        data_type_layout.addWidget(data_type_label)
+        data_type_layout.addWidget(self.data_type_combo)
+        config_items_layout.addLayout(data_type_layout)
 
-        scope_label = QLabel('范围:')
-        scope_label.setMinimumWidth(80)  # 保持与上面标签相同宽度以对齐
+        # 范围设置
+        scope_layout = QHBoxLayout()
+        scope_label = CaptionLabel('范围:')
+        scope_label.setMinimumWidth(100)
         self.scope_combo = ComboBox()
         self.scope_combo.addItems([
             "Trace",
@@ -629,11 +674,15 @@ class VNAControllerGUI(FluentWindow):
             "Channel",
             "Auto"
         ])
-        self.scope_combo.setMinimumWidth(100)
+        self.scope_combo.setMinimumWidth(250)
+        scope_layout.addWidget(scope_label)
+        scope_layout.addWidget(self.scope_combo)
+        config_items_layout.addLayout(scope_layout)
 
-        # 第二行控件
-        format_label = QLabel('数据格式:')
-        format_label.setMinimumWidth(80)  # 保持一致的标签宽度
+        # 数据格式设置
+        format_layout = QHBoxLayout()
+        format_label = CaptionLabel('数据格式:')
+        format_label.setMinimumWidth(100)
         self.format_combo = ComboBox()
         self.format_combo.addItems([
             "Displayed",
@@ -641,94 +690,89 @@ class VNAControllerGUI(FluentWindow):
             "MA",  # Magnitude Angle
             "DB"  # Decibel Angle
         ])
-        self.format_combo.setMinimumWidth(100)
+        self.format_combo.setMinimumWidth(250)
+        format_layout.addWidget(format_label)
+        format_layout.addWidget(self.format_combo)
+        config_items_layout.addLayout(format_layout)
 
-        selector_label = QLabel('测量编号:')
-        selector_label.setMinimumWidth(80)  # 保持一致的标签宽度
+        # 测量编号设置
+        selector_layout = QHBoxLayout()
+        selector_label = CaptionLabel('测量编号:')
+        selector_label.setMinimumWidth(100)
         self.selector_spin = SpinBox()
         self.selector_spin.setRange(-1, 100)
         self.selector_spin.setValue(-1)
-        self.selector_spin.setMinimumWidth(80)
+        self.selector_spin.setMinimumWidth(150)
+        selector_layout.addWidget(selector_label)
+        selector_layout.addWidget(self.selector_spin)
+        config_items_layout.addLayout(selector_layout)
 
-        # 第三行控件
-        file_prefix_label = QLabel('文件前缀:')
-        file_prefix_label.setMinimumWidth(80)  # 保持一致的标签宽度
+        # 文件前缀设置
+        file_prefix_layout = QHBoxLayout()
+        file_prefix_label = CaptionLabel('文件前缀:')
+        file_prefix_label.setMinimumWidth(100)
         self.file_prefix_line_edit = LineEdit()
         self.file_prefix_line_edit.setText('lineData')
-        self.file_prefix_line_edit.setMinimumWidth(80)
+        self.file_prefix_line_edit.setMinimumWidth(250)
+        file_prefix_layout.addWidget(file_prefix_label)
+        file_prefix_layout.addWidget(self.file_prefix_line_edit)
+        config_items_layout.addLayout(file_prefix_layout)
 
-        interval_label = QLabel('存储间隔(s):')
-        interval_label.setMinimumWidth(80)  # 保持一致的标签宽度
+        # 存储间隔设置
+        interval_layout = QHBoxLayout()
+        interval_label = CaptionLabel('存储间隔(s):')
+        interval_label.setMinimumWidth(100)
         self.interval_spin = DoubleSpinBox()
         self.interval_spin.setRange(0.005, 10.00)
         self.interval_spin.setDecimals(2)
         self.interval_spin.setSingleStep(0.01)
         self.interval_spin.setValue(0.08)
-        self.interval_spin.setMinimumWidth(80)
+        self.interval_spin.setMinimumWidth(150)
+        interval_layout.addWidget(interval_label)
+        interval_layout.addWidget(self.interval_spin)
+        config_items_layout.addLayout(interval_layout)
 
-        # 将控件添加到网格布局
-        # 第一行
-        grid_layout.addWidget(data_type_label, 0, 0)
-        grid_layout.addWidget(self.data_type_combo, 0, 1)
-        grid_layout.addWidget(scope_label, 0, 2)
-        grid_layout.addWidget(self.scope_combo, 0, 3)
+        # 添加布局到配置卡片
+        config_layout.addLayout(config_items_layout)
 
-        # 第二行
-        grid_layout.addWidget(format_label, 1, 0)
-        grid_layout.addWidget(self.format_combo, 1, 1)
-        grid_layout.addWidget(selector_label, 1, 2)
-        grid_layout.addWidget(self.selector_spin, 1, 3)
-
-        # 第三行
-        grid_layout.addWidget(file_prefix_label, 2, 0)
-        grid_layout.addWidget(self.file_prefix_line_edit, 2, 1)
-        grid_layout.addWidget(interval_label, 2, 2)
-        grid_layout.addWidget(self.interval_spin, 2, 3)
-
-        # 添加弹性空间
-        grid_layout.setColumnStretch(1, 1)
-        grid_layout.setColumnStretch(3, 1)
-
-        # 添加网格布局到配置组
-        config_group_layout.addLayout(grid_layout)
-
-        self.main_layout.addWidget(config_group)
+        self.main_layout.addWidget(config_card)
 
     def create_acquisition_mode_section(self):
         """创建采集模式区域"""
-        # 采集模式标题
-        mode_label = QLabel('采集模式')
-        mode_label.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
-        self.main_layout.addWidget(mode_label)
-
         # 创建采集模式选择区域
-        mode_group = QGroupBox("采集模式选择")
-        mode_group_layout = QHBoxLayout(mode_group)  # 使用水平布局，将标签和组合框放在同一行
-        mode_group_layout.setSpacing(self.spacing)
-        mode_group_layout.setContentsMargins(15, 15, 15, 15)
+        mode_card = CardWidget()
+        mode_layout = QVBoxLayout(mode_card)
+        mode_layout.setSpacing(self.spacing)
+        mode_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 采集模式标题
+        mode_label = SubtitleLabel('采集模式')
+        mode_label.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        mode_layout.addWidget(mode_label)
         
         # 创建模式选择标签和组合框
-        mode_select_label = QLabel('选择数据采集模式:')
-        mode_select_label.setFont(QFont('Microsoft YaHei', 10))
-        mode_group_layout.addWidget(mode_select_label)
+        mode_select_layout = QHBoxLayout()
+        mode_select_label = CaptionLabel('选择数据采集模式:')
+        mode_select_layout.addWidget(mode_select_label)
         
         self.mode_combo = ComboBox()
         self.mode_combo.addItems(['点测模式', '定次采集模式', '连续采集模式'])
         self.mode_combo.setCurrentIndex(2)  # 默认连续采集模式
         # 连接模式变化信号
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
-        mode_group_layout.addWidget(self.mode_combo)
+        mode_select_layout.addWidget(self.mode_combo)
         
-        mode_group_layout.addStretch()  # 添加弹性空间，将组合框推到右边
+        mode_select_layout.addStretch()  # 添加弹性空间，将组合框推到右边
+        mode_layout.addLayout(mode_select_layout)
         
         # 将模式选择区域添加到主布局
-        self.main_layout.addWidget(mode_group)
+        self.main_layout.addWidget(mode_card)
 
         # 模式堆叠部件
         self.mode_stacked_widget = QStackedWidget()
 
         # 点测模式页面
-        self.point_mode_page = QGroupBox("点测模式参数")
+        self.point_mode_page = CardWidget()
         point_layout = QHBoxLayout(self.point_mode_page)
         point_layout.setSpacing(self.spacing)  # 设置控件间距
         point_layout.setContentsMargins(15, 15, 15, 15)  # 设置边距
@@ -736,7 +780,7 @@ class VNAControllerGUI(FluentWindow):
         self.point_acquire_button = PrimaryPushButton('单次采集')  # 修改按钮名称
         self.point_acquire_button.setEnabled(False)
 
-        point_count_label = QLabel('每次采集道数:')
+        point_count_label = CaptionLabel('每次采集道数:')
         self.point_count_spin = SpinBox()
         self.point_count_spin.setRange(1, 10000)
         self.point_count_spin.setValue(10)
@@ -754,12 +798,12 @@ class VNAControllerGUI(FluentWindow):
         point_layout.addStretch()  # 添加弹性空间
 
         # 定次采集模式页面
-        self.fixed_mode_page = QGroupBox("定次采集模式参数")
+        self.fixed_mode_page = CardWidget()
         fixed_layout = QHBoxLayout(self.fixed_mode_page)
         fixed_layout.setSpacing(self.spacing)  # 设置控件间距
         fixed_layout.setContentsMargins(15, 15, 15, 15)  # 设置边距
 
-        fixed_count_label = QLabel('采集次数:')
+        fixed_count_label = CaptionLabel('采集次数:')
         self.fixed_count_spin = SpinBox()
         self.fixed_count_spin.setRange(1, 10000)
         self.fixed_count_spin.setValue(1000)
@@ -774,7 +818,7 @@ class VNAControllerGUI(FluentWindow):
         fixed_layout.addStretch()  # 添加弹性空间
 
         # 连续采集模式页面
-        self.continuous_mode_page = QGroupBox("连续采集模式参数")
+        self.continuous_mode_page = CardWidget()
         continuous_layout = QHBoxLayout(self.continuous_mode_page)
         continuous_layout.setSpacing(self.spacing)  # 设置控件间距
         continuous_layout.setContentsMargins(15, 15, 15, 15)  # 设置边距
@@ -798,21 +842,27 @@ class VNAControllerGUI(FluentWindow):
 
     def create_status_section(self):
         """创建状态信息区域"""
-        # 状态信息标题
-        status_label = QLabel('状态信息')
-        status_label.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
-        # 注意：这里不再添加到主布局，而是添加到右侧状态区域布局
-
         # 创建状态区域容器
-        self.status_group = QGroupBox("运行状态")
+        self.status_group = CardWidget()
         status_group_layout = QVBoxLayout(self.status_group)
         status_group_layout.setSpacing(self.spacing)
         status_group_layout.setContentsMargins(15, 15, 15, 15)
+
+        # 创建A-Scan实时显示区域（放在上方）
+        self.create_ascan_display()
+        if hasattr(self, 'ascan_display_group'):
+            status_group_layout.addWidget(self.ascan_display_group)
+
+        # 添加运行状态标题
+        status_title = TitleLabel('运行状态')
+        status_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        status_group_layout.addWidget(status_title)
 
         # 状态文本框
         self.status_text_edit = QTextEdit()
         self.status_text_edit.setMinimumHeight(80)
         self.status_text_edit.setReadOnly(True)
+        self.status_text_edit.setStyleSheet("QTextEdit { border: 1px solid #e0e0e0; border-radius: 4px; }")
         status_group_layout.addWidget(self.status_text_edit)
 
         # 进度条
@@ -820,16 +870,6 @@ class VNAControllerGUI(FluentWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)  # 默认隐藏进度条
         status_group_layout.addWidget(self.progress_bar)
-
-        # 先创建RTK状态栏，然后再添加到布局中
-        self.create_rtk_status_bar()
-        if self.rtk_status_bar:
-            status_group_layout.addWidget(self.rtk_status_bar)
-        
-        # 创建A-Scan实时显示区域
-        self.create_ascan_display()
-        if hasattr(self, 'ascan_display_group'):
-            status_group_layout.addWidget(self.ascan_display_group)
 
     def init_data_options(self):
         """初始化数据采集选项"""
@@ -1135,10 +1175,15 @@ class VNAControllerGUI(FluentWindow):
         import pyqtgraph as pg
         
         # 创建A-Scan显示组
-        self.ascan_display_group = QGroupBox("A-Scan实时显示")
+        self.ascan_display_group = CardWidget()
         ascan_layout = QVBoxLayout(self.ascan_display_group)
         ascan_layout.setSpacing(self.spacing)
         ascan_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # A-Scan显示标题
+        ascan_title = SubtitleLabel('A-Scan实时显示')
+        ascan_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        ascan_layout.addWidget(ascan_title)
         
         # 创建pyqtgraph图形布局
         self.ascan_plot_widget = pg.GraphicsLayoutWidget()
@@ -1168,7 +1213,7 @@ class VNAControllerGUI(FluentWindow):
         self.sampling_spinbox.setMinimumWidth(80)
         
         control_layout.addWidget(self.sampling_checkbox)
-        control_layout.addWidget(QLabel('抽样间隔:'))
+        control_layout.addWidget(CaptionLabel('抽样间隔:'))
         control_layout.addWidget(self.sampling_spinbox)
         control_layout.addStretch()
         
