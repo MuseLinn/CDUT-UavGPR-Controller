@@ -1,0 +1,55 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  check-build-and-security:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt || echo "requirements.txt not found, installing common packages"
+        # 安装安全和代码质量检查工具
+        pip install bandit flake8
+      shell: powershell
+
+    - name: Build check with PyInstaller
+      run: |
+        cd src
+        # 只执行构建检查，不生成最终可执行文件
+        pyinstaller main_gui.spec --noupx
+      shell: powershell
+
+    - name: Security check with Bandit
+      run: |
+        cd src
+        # 运行安全扫描，排除测试文件和第三方依赖
+        bandit -r . -x tests,venv,__pycache__
+      shell: powershell
+
+    - name: Code quality check with Flake8
+      run: |
+        cd src
+        # 运行代码质量检查，设置最大行长度为120
+        flake8 . --max-line-length=120 --exclude=tests,venv,__pycache__
+      shell: powershell
+
+    - name: Dependency check
+      run: |
+        # 检查依赖是否有安全漏洞
+        pip install safety
+        safety check
+      shell: powershell
