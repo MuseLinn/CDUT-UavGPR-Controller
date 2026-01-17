@@ -2,6 +2,10 @@
 
 [English](README.md) | 简体中文
 
+![Build workflow status](https://github.com/MuseLinn/CDUT-UavGPR-Controller/actions/workflows/build-release.yml/badge.svg) ![Build workflow status](https://github.com/MuseLinn/CDUT-UavGPR-Controller/actions/workflows/pull-request-check.yml/badge.svg)
+
+![GPR DAQ GUI Logo](src/lib/app_logo.png)
+
 ## 项目简介
 
 **请勿将测试代码上传至Master分支！**
@@ -18,6 +22,39 @@ References:
 贡献者：Linn  
 邮箱：[universe_yuan@icloud.com](https://pyvisa.readthedocs.io/en/latest/introduction/getting.html)  
 版权所有 (c) 2025 by Linn, All Rights Reserved.
+
+## Git工作流程
+
+为了方便课题组的入门接手和合作贡献，以下是基本的Git工作流程：
+
+1. **克隆仓库**：首先从远程仓库克隆代码到本地
+   ```bash
+   git clone <仓库URL>
+   ```
+
+2. **创建分支**：在本地创建新分支进行开发
+   ```bash
+   git checkout -b <分支名>
+   ```
+
+3. **本地开发**：在本地分支上进行代码修改和测试
+
+4. **提交更改**：将本地更改提交到本地仓库
+   ```bash
+   git add .
+   git commit -m "提交说明"
+   ```
+
+5. **推送代码**：将本地分支推送到远程仓库（origin）
+   ```bash
+   git push origin <分支名>
+   ```
+
+6. **发起Pull Request**：在GitHub上发起Pull Request（PR），让别人审查并合并到目标分支（通常是上游仓库upstream的main/master分支）
+
+7. **代码审查**：等待其他贡献者审查代码，根据反馈进行修改
+
+8. **合并PR**：审查通过后，PR会被合并到目标分支
 
 ## 环境配置要求
 
