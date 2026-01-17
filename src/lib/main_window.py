@@ -465,7 +465,7 @@ class VNAControllerGUI(FluentWindow):
                 """)
         
         self.log_message(f"主题已切换到: {theme}")
-        info_bar = InfoBar.actions(
+        info_bar = InfoBar.warning(
             icon='🔔',
             title='提示',
             content='A-Scan实时显示仅在实时数据流方式下可用',
@@ -490,8 +490,7 @@ class VNAControllerGUI(FluentWindow):
                 self.log_message(f"B-Scan颜色映射已更新为: {colormap_name}")
                 
                 # 显示信息提示
-                info_bar = InfoBar.actions(
-                    icon='🎨',
+                info_bar = InfoBar.success(
                     title='颜色映射',
                     content=f'已切换到{colormap_name}颜色映射',
                     orient=Qt.Orientation.Horizontal,
