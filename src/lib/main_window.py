@@ -3,7 +3,7 @@
 Author       : Linn
 Date         : 2026-01-12 22:04:03
 LastEditors  : Linn
-LastEditTime : 2026-01-13 11:10:00
+LastEditTime : 2026-01-17 20:10:00
 FilePath     : \\usbvna\\src\\lib\\main_window.py
 Description  : 主窗口类，包含VNA控制器GUI界面
 
@@ -17,23 +17,21 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QGroupBox, QLabel, QTextEdit, QStackedWidget,
-    QFileDialog, QGridLayout, QScrollArea  # 添加文件对话框和滚动区域支持
+    QFileDialog  # 添加文件对话框和滚动区域支持
 )
-from PyQt6.QtCore import Qt, QSize, QFileInfo, QEventLoop, QTimer
+from PyQt6.QtCore import Qt, QSize, QFileInfo, QEventLoop, QTimer, QThread, pyqtSignal, QRectF
 from PyQt6.QtGui import QFont, QIcon
 
 # 导入PyQt6-Fluent-Widgets组件
 from qfluentwidgets import (
-    FluentWindow, FluentIcon, PrimaryPushButton, PushButton, EditableComboBox as ComboBox, SpinBox, DoubleSpinBox,
+    FluentWindow, PrimaryPushButton, PushButton, EditableComboBox as ComboBox, SpinBox, DoubleSpinBox,
     LineEdit, ProgressBar, SplashScreen,
     InfoBar, InfoBarPosition, FluentIcon as FIF,
-    ComboBoxSettingCard, SwitchButton, CheckBox, HeaderCardWidget, BodyLabel,
-    CardWidget, GroupHeaderCardWidget, SimpleCardWidget,
-    TitleLabel, SubtitleLabel, CaptionLabel,
-    SegmentedWidget, SegmentedItem,
-    ScrollArea, ImageLabel,
-    ColorDialog, Theme
+    SwitchButton, CheckBox, BodyLabel,
+    CardWidget, TitleLabel, SubtitleLabel, CaptionLabel,
+    ScrollArea, setTheme, Theme
 )
+from datetime import datetime
 
 # 导入自定义模块
 from .logger_config import setup_logger
@@ -41,6 +39,8 @@ from .vna_controller import VNAController
 from .rtk_module import RTKModule
 from .workers import (DataDumpWorker, ContinuousDumpWorker, PointDumpWorker, SinglePointDumpWorker)
 from .rtk_status import RTKStatusBar
+
+import pyqtgraph as pg
 
 # NOTE: 创建日志记录器
 logger = setup_logger("vna_window", "logs/vna_window.log", level=10)  # 10对应DEBUG级别
@@ -135,8 +135,8 @@ class VNAControllerGUI(FluentWindow):
         """初始化用户界面组件"""
         # 设置窗口标题和大小
         self.setWindowTitle('低频无人机航空探地雷达装备及配套软件研发')
-        self.resize(1200, 900)
-        self.setMinimumSize(1000, 700)
+        self.resize(1200, 1000)
+        self.setMinimumSize(1000, 1000)
         root = QFileInfo(__file__).absolutePath()
         self.setWindowIcon(QIcon(root + '/app_logo.png'))
         # 创建启动页面
@@ -175,11 +175,11 @@ class VNAControllerGUI(FluentWindow):
         left_scroll_area = ScrollArea()
         left_scroll_area.setWidgetResizable(True)
         left_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left_scroll_area.setFixedWidth(450)
+        left_scroll_area.setFixedWidth(470)
         left_scroll_area.setStyleSheet("background-color: transparent; border: none;")
         
         self.config_widget = QWidget()
-        self.config_widget.setFixedWidth(430)
+        self.config_widget.setFixedWidth(450)
         self.config_widget.setStyleSheet("background-color: transparent;")
         self.main_layout = QVBoxLayout(self.config_widget)
         self.main_layout.setSpacing(self.spacing)
@@ -208,6 +208,68 @@ class VNAControllerGUI(FluentWindow):
         self.create_rtk_status_bar()
         if self.rtk_status_bar:
             self.main_layout.addWidget(self.rtk_status_bar)
+        
+        # 添加显示选项和颜色映射选择
+        display_options_card = CardWidget()
+        display_options_layout = QVBoxLayout(display_options_card)
+        display_options_layout.setSpacing(self.spacing)
+        display_options_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 显示选项标题
+        display_options_title = SubtitleLabel('显示选项')
+        display_options_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        display_options_layout.addWidget(display_options_title)
+        
+        # 添加说明提示
+        display_options_note = BodyLabel('提示：B-Scan只有在实时数据流方式下才会显示')
+        display_options_note.setFont(QFont('Microsoft YaHei', 8, QFont.Weight.Bold, italic=True))
+        display_options_note.setWordWrap(True)
+        display_options_layout.addWidget(display_options_note)
+        
+        # 第一行：显示选项
+        view_selection_layout = QHBoxLayout()
+        view_selection_layout.setSpacing(15)
+        
+        view_selection_label = CaptionLabel('视图:')
+        view_selection_layout.addWidget(view_selection_label)
+        
+        # A-Scan显示选项
+        self.ascan_checkbox = CheckBox('A-Scan')
+        self.ascan_checkbox.setChecked(True)
+        self.ascan_checkbox.stateChanged.connect(self.on_view_selection_changed)
+        view_selection_layout.addWidget(self.ascan_checkbox)
+        
+        # B-Scan显示选项
+        self.bscan_checkbox = CheckBox('B-Scan')
+        self.bscan_checkbox.setChecked(False)
+        self.bscan_checkbox.stateChanged.connect(self.on_view_selection_changed)
+        view_selection_layout.addWidget(self.bscan_checkbox)
+        
+        # 运行状态显示选项
+        self.status_checkbox = CheckBox('运行状态')
+        self.status_checkbox.setChecked(True)
+        self.status_checkbox.stateChanged.connect(self.on_view_selection_changed)
+        view_selection_layout.addWidget(self.status_checkbox)
+        
+        view_selection_layout.addStretch()
+        display_options_layout.addLayout(view_selection_layout)
+        
+        # 第二行：颜色映射选择
+        bscan_colormap_layout = QHBoxLayout()
+        bscan_colormap_label = CaptionLabel('B-Scan颜色映射:')
+        self.bscan_colormap_combo = ComboBox()
+        self.bscan_colormap_combo.addItems(['seismic', 'hot', 'jet', 'gray', 'viridis', 'plasma', 'inferno', 'magma', 'cividis'])
+        self.bscan_colormap_combo.setCurrentText('seismic')  # 默认使用seismic颜色映射
+        self.bscan_colormap_combo.currentTextChanged.connect(self.on_bscan_colormap_changed)
+        self.bscan_colormap_combo.setMinimumWidth(120)
+        
+        bscan_colormap_layout.addWidget(bscan_colormap_label)
+        bscan_colormap_layout.addWidget(self.bscan_colormap_combo)
+        bscan_colormap_layout.addStretch()
+        
+        display_options_layout.addLayout(bscan_colormap_layout)
+        
+        self.main_layout.addWidget(display_options_card)
         
         # 数据采集配置区域
         self.create_data_config_section()
@@ -284,7 +346,6 @@ class VNAControllerGUI(FluentWindow):
                 self.ascan_display_group.setEnabled(False)
             
             # 显示InfoBar提示
-            from qfluentwidgets import InfoBar, InfoBarPosition
             info_bar = InfoBar(
                 icon='🔔',
                 title='提示',
@@ -298,6 +359,150 @@ class VNAControllerGUI(FluentWindow):
             info_bar.show()
         
         self.log_message(f"数据获取方式已切换到: {mode_text}")
+
+    def on_theme_changed(self, theme):
+        """当主题改变时调用"""        
+        # 更新应用程序主题
+        if theme == '深色主题':
+            # 设置深色主题
+            setTheme(Theme.DARK)
+            
+            # 更新pyqtgraph主题
+            pg.setConfigOption('background', 'k')
+            pg.setConfigOption('foreground', 'w')
+            
+            # 更新现有图表
+            if hasattr(self, 'ascan_plot') and hasattr(self, 'ascan_plot_widget'):
+                self.ascan_plot_widget.setBackground('k')
+                self.ascan_curve.setPen('w', lineWidth=2)
+                self.ascan_plot.getAxis('bottom').setPen('w')
+                self.ascan_plot.getAxis('left').setPen('w')
+                self.ascan_plot.getAxis('bottom').setTextPen('w')
+                self.ascan_plot.getAxis('left').setTextPen('w')
+                self.ascan_plot.setTitle('A-Scan时域波形', color='w')
+                self.ascan_plot.setLabel('bottom', '采样点', color='w')
+                self.ascan_plot.setLabel('left', '幅度', color='w')
+            
+            if hasattr(self, 'bscan_plot') and hasattr(self, 'bscan_plot_widget'):
+                self.bscan_plot_widget.setBackground('k')
+                self.bscan_plot.getAxis('bottom').setPen('w')
+                self.bscan_plot.getAxis('left').setPen('w')
+                self.bscan_plot.getAxis('bottom').setTextPen('w')
+                self.bscan_plot.getAxis('left').setTextPen('w')
+                self.bscan_plot.setTitle('B-Scan图像', color='w')
+                self.bscan_plot.setLabel('bottom', '道数', color='w')
+                self.bscan_plot.setLabel('left', '采样点', color='w')
+                
+                # 更新颜色条
+                if hasattr(self, 'bscan_cbar'):
+                    self.bscan_cbar.setLabel('right', color='w')
+            
+            # 更新状态文本框样式
+            if hasattr(self, 'status_text_edit'):
+                self.status_text_edit.setStyleSheet("""
+                    QTextEdit { 
+                        border: 1px solid #333; 
+                        border-radius: 6px; 
+                        padding: 8px; 
+                        background-color: #222;
+                        color: #fff;
+                        font-family: 'Microsoft YaHei';
+                        font-size: 9pt;
+                    }
+                    QTextEdit:hover {
+                        border-color: #0078d4;
+                    }
+                """)
+        else:  # 浅色主题
+            # 设置浅色主题
+            setTheme(Theme.LIGHT)
+            
+            # 更新pyqtgraph主题
+            pg.setConfigOption('background', 'w')
+            pg.setConfigOption('foreground', 'k')
+            
+            # 更新现有图表
+            if hasattr(self, 'ascan_plot') and hasattr(self, 'ascan_plot_widget'):
+                self.ascan_plot_widget.setBackground('w')
+                self.ascan_curve.setPen('b', lineWidth=2)
+                self.ascan_plot.getAxis('bottom').setPen('k')
+                self.ascan_plot.getAxis('left').setPen('k')
+                self.ascan_plot.getAxis('bottom').setTextPen('k')
+                self.ascan_plot.getAxis('left').setTextPen('k')
+                self.ascan_plot.setTitle('A-Scan时域波形', color='k')
+                self.ascan_plot.setLabel('bottom', '采样点', color='k')
+                self.ascan_plot.setLabel('left', '幅度', color='k')
+            
+            if hasattr(self, 'bscan_plot') and hasattr(self, 'bscan_plot_widget'):
+                self.bscan_plot_widget.setBackground('w')
+                self.bscan_plot.getAxis('bottom').setPen('k')
+                self.bscan_plot.getAxis('left').setPen('k')
+                self.bscan_plot.getAxis('bottom').setTextPen('k')
+                self.bscan_plot.getAxis('left').setTextPen('k')
+                self.bscan_plot.setTitle('B-Scan图像', color='k')
+                self.bscan_plot.setLabel('bottom', '道数', color='k')
+                self.bscan_plot.setLabel('left', '采样点', color='k')
+                
+                # 更新颜色条
+                if hasattr(self, 'bscan_cbar'):
+                    self.bscan_cbar.setLabel('right', color='k')
+            
+            # 更新状态文本框样式
+            if hasattr(self, 'status_text_edit'):
+                self.status_text_edit.setStyleSheet("""
+                    QTextEdit { 
+                        border: 1px solid #e0e0e0; 
+                        border-radius: 6px; 
+                        padding: 8px; 
+                        background-color: #f8f9fa;
+                        color: #000;
+                        font-family: 'Microsoft YaHei';
+                        font-size: 9pt;
+                    }
+                    QTextEdit:hover {
+                        border-color: #0078d4;
+                    }
+                """)
+        
+        self.log_message(f"主题已切换到: {theme}")
+        info_bar = InfoBar.actions(
+            icon='🔔',
+            title='提示',
+            content='A-Scan实时显示仅在实时数据流方式下可用',
+            orient='horizontal',
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=3000,
+            parent=self
+        )
+        info_bar.show()
+
+    def on_bscan_colormap_changed(self, colormap_name):
+        """当B-Scan颜色映射改变时调用"""
+        import pyqtgraph as pg
+        
+        if hasattr(self, 'bscan_img'):
+            try:
+                # 获取新的颜色映射
+                cmap = pg.colormap.getFromMatplotlib(colormap_name)
+                # 更新颜色查找表
+                self.bscan_img.setLookupTable(cmap.getLookupTable())
+                self.log_message(f"B-Scan颜色映射已更新为: {colormap_name}")
+                
+                # 显示信息提示
+                info_bar = InfoBar.actions(
+                    icon='🎨',
+                    title='颜色映射',
+                    content=f'已切换到{colormap_name}颜色映射',
+                    orient=Qt.Orientation.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP,
+                    duration=2000,
+                    parent=self
+                )
+                info_bar.show()
+            except Exception as e:
+                self.log_message(f"更新B-Scan颜色映射失败: {str(e)}")
 
     def center_window(self):
         """将窗口居中显示在屏幕中央"""
@@ -322,23 +527,27 @@ class VNAControllerGUI(FluentWindow):
         # 添加设置界面
         self.setupInterface = QWidget()
         self.setupInterface.setObjectName("setupInterface")
-        self.setup_layout = QVBoxLayout(self.setupInterface)
-        self.setup_layout.setSpacing(self.spacing)
-        self.setup_layout.setContentsMargins(15, 15, 15, 15)
+        setup_layout = QVBoxLayout(self.setupInterface)
+        setup_layout.setSpacing(self.spacing)
+        setup_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 创建滚动区域（参考主页左侧设计）
+        setup_scroll_area = ScrollArea()
+        setup_scroll_area.setWidgetResizable(True)
+        setup_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        setup_scroll_area.setStyleSheet("background-color: transparent; border: none;")
+        
+        setup_content = QWidget()
+        setup_content.setStyleSheet("background-color: transparent;")
+        setup_content_layout = QVBoxLayout(setup_content)
+        setup_content_layout.setSpacing(self.spacing)
+        setup_content_layout.setContentsMargins(0, 0, 0, 0)
         
         # 设置界面标题
         setup_title = SubtitleLabel('系统设置')
         setup_title.setFont(QFont('Microsoft YaHei', 12, QFont.Weight.Bold))
         setup_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setup_layout.addWidget(setup_title)
-        
-        # 使用滚动区域避免界面拥挤
-        scroll_area = ScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setSpacing(self.spacing)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        setup_content_layout.addWidget(setup_title)
         
         # RTK定位模块设置区域
         rtk_card = CardWidget()
@@ -404,6 +613,8 @@ class VNAControllerGUI(FluentWindow):
         rtk_layout.addLayout(rtk_control_layout)
         rtk_layout.addLayout(rtk_storage_layout)
         
+        setup_content_layout.addWidget(rtk_card)
+        
         # 数据采集设置区域
         acquisition_card = CardWidget()
         acquisition_layout = QVBoxLayout(acquisition_card)
@@ -438,12 +649,43 @@ class VNAControllerGUI(FluentWindow):
         
         acquisition_layout.addWidget(data_acquisition_widget)
         
-        scroll_layout.addWidget(rtk_card)
-        scroll_layout.addWidget(acquisition_card)
-        scroll_layout.addStretch()
+        setup_content_layout.addWidget(acquisition_card)
         
-        scroll_area.setWidget(scroll_content)
-        self.setup_layout.addWidget(scroll_area)
+        # 主题设置区域
+        theme_card = CardWidget()
+        theme_layout = QVBoxLayout(theme_card)
+        theme_layout.setSpacing(self.spacing)
+        theme_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 主题设置标题
+        theme_title = SubtitleLabel('主题设置')
+        theme_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        theme_layout.addWidget(theme_title)
+        
+        # 主题选择
+        theme_control_layout = QHBoxLayout()
+        theme_label = CaptionLabel('界面主题:')
+        self.theme_combo = ComboBox()
+        self.theme_combo.addItems(['浅色主题', '深色主题'])
+        self.theme_combo.setCurrentText('浅色主题')
+        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
+        
+        theme_control_layout.addWidget(theme_label)
+        theme_control_layout.addWidget(self.theme_combo)
+        theme_control_layout.addStretch()
+        
+        theme_layout.addLayout(theme_control_layout)
+        
+        setup_content_layout.addWidget(theme_card)
+        
+        # 添加拉伸以保持内容顶部对齐
+        setup_content_layout.addStretch()
+        
+        # 将内容添加到滚动区域
+        setup_scroll_area.setWidget(setup_content)
+        
+        # 将滚动区域添加到设置界面
+        setup_layout.addWidget(setup_scroll_area)
         
         # 添加设置界面到导航栏
         self.addSubInterface(self.setupInterface, FIF.SETTING, '设置')
@@ -451,7 +693,6 @@ class VNAControllerGUI(FluentWindow):
     def log_message(self, message):
         """在状态文本框中添加日志消息"""
         if hasattr(self, 'status_text_edit') and self.status_text_edit is not None:
-            from datetime import datetime
             timestamp = datetime.now().strftime("%H:%M:%S:%f")
             self.status_text_edit.append(f"[{timestamp}] {message}")
             # 滚动到底部
@@ -513,7 +754,6 @@ class VNAControllerGUI(FluentWindow):
         self.log_message("刷新RTK串口列表")
         
         # 显示刷新开始的InfoBar
-        from qfluentwidgets import InfoBar, InfoBarPosition
         info_bar = InfoBar(
             icon=FIF.SYNC,
             title='刷新串口',
@@ -777,17 +1017,17 @@ class VNAControllerGUI(FluentWindow):
         point_layout.setSpacing(self.spacing)  # 设置控件间距
         point_layout.setContentsMargins(15, 15, 15, 15)  # 设置边距
 
-        self.point_acquire_button = PrimaryPushButton('单次采集')  # 修改按钮名称
+        self.point_acquire_button = PrimaryPushButton('单采')  # 修改按钮名称
         self.point_acquire_button.setEnabled(False)
 
-        point_count_label = CaptionLabel('每次采集道数:')
+        point_count_label = CaptionLabel('每次道数:')
         self.point_count_spin = SpinBox()
         self.point_count_spin.setRange(1, 10000)
         self.point_count_spin.setValue(10)
 
         self.point_start_button = PrimaryPushButton('开始连续采集')
         self.point_start_button.setEnabled(False)
-        self.point_stop_button = PushButton('停止连续采集')
+        self.point_stop_button = PushButton('停止')
         self.point_stop_button.setEnabled(False)
 
         point_layout.addWidget(self.point_acquire_button)
@@ -848,21 +1088,40 @@ class VNAControllerGUI(FluentWindow):
         status_group_layout.setSpacing(self.spacing)
         status_group_layout.setContentsMargins(15, 15, 15, 15)
 
-        # 创建A-Scan实时显示区域（放在上方）
+        # 创建A-Scan实时显示区域
         self.create_ascan_display()
         if hasattr(self, 'ascan_display_group'):
             status_group_layout.addWidget(self.ascan_display_group)
+        
+        # 创建B-Scan实时显示区域
+        self.create_bscan_display()
+        if hasattr(self, 'bscan_display_group'):
+            self.bscan_display_group.setVisible(False)  # 默认隐藏B-Scan显示
+            status_group_layout.addWidget(self.bscan_display_group)
 
         # 添加运行状态标题
-        status_title = TitleLabel('运行状态')
-        status_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
-        status_group_layout.addWidget(status_title)
+        self.status_title = SubtitleLabel('运行状态')
+        self.status_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        status_group_layout.addWidget(self.status_title)
 
-        # 状态文本框
+        # 状态文本框 - 使用更现代的样式
         self.status_text_edit = QTextEdit()
-        self.status_text_edit.setMinimumHeight(80)
+        self.status_text_edit.setMinimumHeight(100)
         self.status_text_edit.setReadOnly(True)
-        self.status_text_edit.setStyleSheet("QTextEdit { border: 1px solid #e0e0e0; border-radius: 4px; }")
+        # 使用更美观的样式，匹配 qfluentwidgets 风格
+        self.status_text_edit.setStyleSheet("""
+            QTextEdit { 
+                border: 1px solid #e0e0e0; 
+                border-radius: 6px; 
+                padding: 8px; 
+                background-color: #f8f9fa;
+                font-family: 'Microsoft YaHei';
+                font-size: 9pt;
+            }
+            QTextEdit:hover {
+                border-color: #0078d4;
+            }
+        """)
         status_group_layout.addWidget(self.status_text_edit)
 
         # 进度条
@@ -870,6 +1129,24 @@ class VNAControllerGUI(FluentWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)  # 默认隐藏进度条
         status_group_layout.addWidget(self.progress_bar)
+
+    def on_view_selection_changed(self):
+        """当视图选择改变时调用"""
+        # 显示/隐藏A-Scan显示
+        if hasattr(self, 'ascan_display_group'):
+            self.ascan_display_group.setVisible(self.ascan_checkbox.isChecked())
+        
+        # 显示/隐藏B-Scan显示
+        if hasattr(self, 'bscan_display_group'):
+            self.bscan_display_group.setVisible(self.bscan_checkbox.isChecked())
+        
+        # 显示/隐藏运行状态
+        if hasattr(self, 'status_title'):
+            self.status_title.setVisible(self.status_checkbox.isChecked())
+        if hasattr(self, 'status_text_edit'):
+            self.status_text_edit.setVisible(self.status_checkbox.isChecked())
+        if hasattr(self, 'progress_bar'):
+            self.progress_bar.setVisible(self.status_checkbox.isChecked())
 
     def init_data_options(self):
         """初始化数据采集选项"""
@@ -915,7 +1192,6 @@ class VNAControllerGUI(FluentWindow):
             self.rtk_enable_switch.setEnabled(False)
             
             # 使用QThread在后台线程中启用RTK模块，避免阻塞主线程
-            from PyQt6.QtCore import QThread, pyqtSignal
             
             class RTKEnableThread(QThread):
                 """在后台线程中启用RTK模块的线程类"""
@@ -992,7 +1268,6 @@ class VNAControllerGUI(FluentWindow):
             self.rtk_enable_switch.setEnabled(False)
             
             # 使用QThread在后台线程中禁用RTK模块，避免阻塞主线程
-            from PyQt6.QtCore import QThread, pyqtSignal
             
             class RTKDisableThread(QThread):
                 """在后台线程中禁用RTK模块的线程类"""
@@ -1108,7 +1383,6 @@ class VNAControllerGUI(FluentWindow):
         if not os.path.exists(rtk_data_dir):
             os.makedirs(rtk_data_dir)
         # 生成文件名
-        from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         rtk_data_filename = os.path.join(rtk_data_dir, f"rtk_data_{timestamp}.csv")
         # 设置RTK数据文件
@@ -1191,11 +1465,33 @@ class VNAControllerGUI(FluentWindow):
         
         # 添加绘图项
         self.ascan_plot = self.ascan_plot_widget.addPlot(title='A-Scan时域波形')
-        self.ascan_curve = self.ascan_plot.plot([], [], pen='b', lineWidth=2)
         
-        # 设置坐标轴
-        self.ascan_plot.setLabel('bottom', '采样点')
-        self.ascan_plot.setLabel('left', '幅度')
+        # 获取当前主题
+        current_theme = self.theme_combo.currentText() if hasattr(self, 'theme_combo') else '浅色主题'
+        
+        # 设置背景和前景色
+        if current_theme == '深色主题':
+            self.ascan_plot_widget.setBackground('k')
+            self.ascan_curve = self.ascan_plot.plot([], [], pen='w', lineWidth=2)
+            self.ascan_plot.getAxis('bottom').setPen('w')
+            self.ascan_plot.getAxis('left').setPen('w')
+            self.ascan_plot.getAxis('bottom').setTextPen('w')
+            self.ascan_plot.getAxis('left').setTextPen('w')
+            self.ascan_plot.setTitle('A-Scan时域波形', color='w')
+            self.ascan_plot.setLabel('bottom', '采样点', color='w')
+            self.ascan_plot.setLabel('left', '幅度', color='w')
+        else:
+            self.ascan_plot_widget.setBackground('w')
+            self.ascan_curve = self.ascan_plot.plot([], [], pen='b', lineWidth=2)
+            self.ascan_plot.getAxis('bottom').setPen('k')
+            self.ascan_plot.getAxis('left').setPen('k')
+            self.ascan_plot.getAxis('bottom').setTextPen('k')
+            self.ascan_plot.getAxis('left').setTextPen('k')
+            self.ascan_plot.setTitle('A-Scan时域波形', color='k')
+            self.ascan_plot.setLabel('bottom', '采样点', color='k')
+            self.ascan_plot.setLabel('left', '幅度', color='k')
+        
+        # 设置坐标轴范围
         self.ascan_plot.setXRange(0, 500)
         self.ascan_plot.setYRange(-1, 1)
         
@@ -1204,7 +1500,7 @@ class VNAControllerGUI(FluentWindow):
         
         # 抽样显示选项
         self.sampling_checkbox = CheckBox('抽样显示')
-        self.sampling_checkbox.setChecked(True)
+        self.sampling_checkbox.setChecked(False)
         
         # 抽样间隔
         self.sampling_spinbox = SpinBox()
@@ -1219,6 +1515,82 @@ class VNAControllerGUI(FluentWindow):
         
         ascan_layout.addWidget(self.ascan_plot_widget)
         ascan_layout.addLayout(control_layout)
+
+    def create_bscan_display(self):
+        """创建B-Scan实时显示区域"""
+        import pyqtgraph as pg
+        
+        # 创建B-Scan显示组
+        self.bscan_display_group = CardWidget()
+        bscan_layout = QVBoxLayout(self.bscan_display_group)
+        bscan_layout.setSpacing(self.spacing)
+        bscan_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # B-Scan显示标题
+        bscan_title = SubtitleLabel('B-Scan实时显示')
+        bscan_title.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        bscan_layout.addWidget(bscan_title)
+        
+        # 创建pyqtgraph图形布局
+        self.bscan_plot_widget = pg.GraphicsLayoutWidget()
+        self.bscan_plot_widget.setMinimumHeight(300)
+        
+        # 添加绘图项
+        self.bscan_plot = self.bscan_plot_widget.addPlot(title='B-Scan图像')
+        
+        # 获取当前主题
+        current_theme = self.theme_combo.currentText() if hasattr(self, 'theme_combo') else '浅色主题'
+        
+        # 设置背景和前景色
+        if current_theme == '深色主题':
+            self.bscan_plot_widget.setBackground('k')
+            self.bscan_plot.getAxis('bottom').setPen('w')
+            self.bscan_plot.getAxis('left').setPen('w')
+            self.bscan_plot.getAxis('bottom').setTextPen('w')
+            self.bscan_plot.getAxis('left').setTextPen('w')
+            self.bscan_plot.setTitle('B-Scan图像', color='w')
+            self.bscan_plot.setLabel('bottom', '道数', color='w')
+            self.bscan_plot.setLabel('left', '采样点', color='w')
+        else:
+            self.bscan_plot_widget.setBackground('w')
+            self.bscan_plot.getAxis('bottom').setPen('k')
+            self.bscan_plot.getAxis('left').setPen('k')
+            self.bscan_plot.getAxis('bottom').setTextPen('k')
+            self.bscan_plot.getAxis('left').setTextPen('k')
+            self.bscan_plot.setTitle('B-Scan图像', color='k')
+            self.bscan_plot.setLabel('bottom', '道数', color='k')
+            self.bscan_plot.setLabel('left', '采样点', color='k')
+        
+        # 创建图像项
+        self.bscan_img = pg.ImageItem(axisOrder='row-major')
+        self.bscan_plot.addItem(self.bscan_img)
+        
+        # 设置坐标轴方向（时深关系）
+        self.bscan_plot.invertY(True)
+        
+        # 使用选择的颜色映射
+        colormap_name = self.bscan_colormap_combo.currentText() if hasattr(self, 'bscan_colormap_combo') else 'seismic'
+        cmap = pg.colormap.getFromMatplotlib(colormap_name)
+        self.bscan_img.setLookupTable(cmap.getLookupTable())
+        
+        # 添加颜色条
+        self.bscan_cbar = pg.ColorBarItem(label='幅度')
+        self.bscan_cbar.setImageItem(self.bscan_img)
+        
+        # 设置颜色条标签颜色
+        if current_theme == '深色主题':
+            # ColorBarItem的标签在右侧，使用'right'轴
+            self.bscan_cbar.setLabel('right', color='w')
+        else:
+            self.bscan_cbar.setLabel('right', color='k')
+        
+        self.bscan_plot_widget.addItem(self.bscan_cbar, row=0, col=1)
+        
+        # 初始化B-Scan数据
+        self.bscan_data = []
+        self.max_bscan_traces = 500  # 最大道数
+        
+        bscan_layout.addWidget(self.bscan_plot_widget)
 
     def update_ascan_display(self, data):
         """更新A-Scan实时显示"""
@@ -1247,6 +1619,10 @@ class VNAControllerGUI(FluentWindow):
             if len(data) > 0:
                 self.ascan_plot.setXRange(0, len(data))
                 self.ascan_plot.setYRange(np.min(data) - 0.1, np.max(data) + 0.1)
+            
+            # 更新B-Scan显示
+            if hasattr(self, 'bscan_checkbox') and self.bscan_checkbox.isChecked():
+                self.update_bscan_display(data)
                 
         except Exception as e:
             self.log_message(f"更新A-Scan显示失败: {str(e)}")
@@ -1255,7 +1631,6 @@ class VNAControllerGUI(FluentWindow):
         """更新系统时间"""
         if not self.rtk_enabled:
             # 如果RTK未启用，则更新系统时间
-            from datetime import datetime
             current_time = datetime.now().strftime("%H:%M:%S")
             # 更新RTK状态栏的时间显示
             if self.rtk_status_bar:
@@ -1288,6 +1663,37 @@ class VNAControllerGUI(FluentWindow):
         """模式切换时重置点测计数器"""
         self.point_sample_counter = 0
         self.point_group_counter = 0
+
+    def update_bscan_display(self, data):
+        """更新B-Scan实时显示"""
+        if not hasattr(self, 'bscan_img'):
+            return
+        
+        import numpy as np
+        
+        # 添加新数据
+        self.bscan_data.append(data)
+        
+        # 限制B-Scan数据长度
+        if len(self.bscan_data) > self.max_bscan_traces:
+            self.bscan_data = self.bscan_data[-self.max_bscan_traces:]
+        
+        # 转换为numpy数组并转置
+        bscan_array = np.array(self.bscan_data).T
+        
+        # 更新图像
+        self.bscan_img.setImage(bscan_array, axisOrder='row-major')
+        self.bscan_img.setRect(QRectF(0, 0, bscan_array.shape[1], bscan_array.shape[0]))
+        
+        # 更新颜色条范围
+        if bscan_array.size > 0:
+            min_val = np.min(bscan_array)
+            max_val = np.max(bscan_array)
+            self.bscan_cbar.setLevels((min_val, max_val))
+        
+        # 更新坐标轴范围
+        self.bscan_plot.setXRange(0, bscan_array.shape[1])
+        self.bscan_plot.setYRange(0, bscan_array.shape[0])
 
     def refresh_devices(self):
         """刷新可用设备列表"""
@@ -1325,7 +1731,6 @@ class VNAControllerGUI(FluentWindow):
         self.connect_button.setEnabled(False)
         
         # 使用QThread在后台线程中连接设备，避免阻塞主线程
-        from PyQt6.QtCore import QThread, pyqtSignal
         
         class DeviceConnectThread(QThread):
             """在后台线程中连接设备的线程类"""
@@ -1359,7 +1764,6 @@ class VNAControllerGUI(FluentWindow):
         self.connect_thread = DeviceConnectThread(self, device_address)
         self.connect_thread.success.connect(self.on_device_connect_success)
         self.connect_thread.failure.connect(self.on_device_connect_failure)
-        self.connect_thread.finished.connect(lambda: self.connect_button.setEnabled(True))
         self.connect_thread.start()
     
     def on_device_connect_success(self, device_address):
@@ -1379,6 +1783,7 @@ class VNAControllerGUI(FluentWindow):
     
     def on_device_connect_failure(self, device_address, error_msg):
         """设备连接失败后的处理"""
+        self.connect_button.setEnabled(True)
         self.log_message(f"{error_msg}: {device_address}")
         InfoBar.error(
             title='设备连接',
@@ -1470,6 +1875,7 @@ class VNAControllerGUI(FluentWindow):
         """更新设备状态"""
         if self.device_connected:
             # 设备已连接，启用相关按钮
+            self.connect_button.setEnabled(False)
             self.disconnect_button.setEnabled(True)
             self.get_id_button.setEnabled(True)
             self.catalog_button.setEnabled(True)
@@ -1481,6 +1887,7 @@ class VNAControllerGUI(FluentWindow):
             self.continuous_start_button.setEnabled(True)
         else:
             # 设备未连接，禁用相关按钮
+            self.connect_button.setEnabled(True)
             self.disconnect_button.setEnabled(False)
             self.get_id_button.setEnabled(False)
             self.catalog_button.setEnabled(False)
@@ -1586,8 +1993,26 @@ class VNAControllerGUI(FluentWindow):
         # 隐藏进度条
         self.progress_bar.setVisible(False)
     
+    def clear_scan_images(self):
+        """清除A-Scan和B-Scan图像"""
+        # 清除A-Scan图像
+        if hasattr(self, 'ascan_curve'):
+            self.ascan_curve.setData([], [])
+        
+        # 清除B-Scan图像
+        if hasattr(self, 'bscan_img') and hasattr(self, 'bscan_data'):
+            # 重置B-Scan数据
+            self.bscan_data = []
+            # 不设置空图像，只重置数据
+            # 下次有新数据时会自动更新图像
+        
+        self.log_message("已清除之前的A-Scan和B-Scan图像")
+
     def start_fixed_acquire(self):
         """开始定次采集"""
+        # 清除之前的图像
+        self.clear_scan_images()
+        
         self.log_message("开始定次采集")
         self.fixed_start_button.setEnabled(False)
         
@@ -1621,6 +2046,9 @@ class VNAControllerGUI(FluentWindow):
     
     def start_continuous_acquire(self):
         """开始连续采集"""
+        # 清除之前的图像
+        self.clear_scan_images()
+        
         self.log_message("开始连续采集")
         self.is_continuous_running = True
         self.continuous_start_button.setEnabled(False)
@@ -1649,6 +2077,9 @@ class VNAControllerGUI(FluentWindow):
     
     def point_acquire(self):
         """执行单次点测采集"""
+        # 清除之前的图像
+        self.clear_scan_images()
+        
         self.log_message("执行单次点测采集")
         self.point_acquire_button.setEnabled(False)
         

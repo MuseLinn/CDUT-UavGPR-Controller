@@ -11,6 +11,9 @@ Copyright (c) 2026 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 """
 
 import time
+import numpy as np
+import csv
+import os
 from PyQt6.QtCore import QThread, pyqtSignal
 
 class DataDumpWorker(QThread):
@@ -40,7 +43,7 @@ class DataDumpWorker(QThread):
             # 执行数据采集循环
             for i in range(self.count):
                 # 根据数据获取方式执行不同的采集逻辑
-                if self.data_acquisition_mode == "单CSV存储方式":
+                if self.data_acquisition_mode == "A-Scan分散存储":
                     # 生成文件名，格式为{prefix}_0000001.csv
                     filename = f"{self.file_prefix}_{i + 1:07d}.csv"
                     response = self.vna_controller.data_dump(
@@ -52,10 +55,6 @@ class DataDumpWorker(QThread):
                     
                     # 尝试读取刚刚存储的数据以用于实时显示
                     try:
-                        import numpy as np
-                        import csv
-                        import os
-                        
                         # 读取CSV文件
                         file_path = os.path.join(self.path, filename)
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -80,9 +79,6 @@ class DataDumpWorker(QThread):
                         pass
                 else:  # 实时数据流方式
                     # 使用新的read_ascan_data方法获取数据
-                    import numpy as np
-                    import os
-                    import csv
                     
                     # 生成主文件名，格式为{prefix}_streaming.csv
                     main_filename = f"{self.file_prefix}_streaming.csv"
@@ -143,9 +139,24 @@ class ContinuousDumpWorker(QThread):
         self.interval = interval
         self.data_acquisition_mode = data_acquisition_mode
         self.running = True
+        # 添加文件对象和写入器，用于优化实时数据流方式的文件I/O
+        self.csv_file = None
+        self.csv_writer = None
+        self.file_initialized = False
 
     def stop(self):
         self.running = False
+
+    def cleanup(self):
+        """清理资源，关闭文件"""
+        if self.csv_file:
+            try:
+                self.csv_file.close()
+                self.csv_file = None
+                self.csv_writer = None
+                self.file_initialized = False
+            except Exception as e:
+                pass
 
     def run(self):
         try:
@@ -156,7 +167,7 @@ class ContinuousDumpWorker(QThread):
             while self.running:
                 count += 1
                 # 根据数据获取方式执行不同的采集逻辑
-                if self.data_acquisition_mode == "单CSV存储方式":
+                if self.data_acquisition_mode == "A-Scan分散存储":
                     # 生成文件名，格式为{prefix}_0000001.csv
                     filename = f"{self.file_prefix}_{count:07d}.csv"
                     response = self.vna_controller.data_dump(
@@ -164,14 +175,11 @@ class ContinuousDumpWorker(QThread):
 
                     if response is None:
                         self.finished_signal.emit(False, f"数据采集在第{count}次时失败")
+                        self.cleanup()
                         return
                     
                     # 尝试读取刚刚存储的数据以用于实时显示
                     try:
-                        import numpy as np
-                        import csv
-                        import os
-                        
                         # 读取CSV文件
                         file_path = os.path.join(self.path, filename)
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -196,9 +204,6 @@ class ContinuousDumpWorker(QThread):
                         pass
                 else:  # 实时数据流方式
                     # 使用新的read_ascan_data方法获取数据
-                    import numpy as np
-                    import os
-                    import csv
                     
                     # 生成主文件名，格式为{prefix}_streaming.csv
                     main_filename = f"{self.file_prefix}_streaming.csv"
@@ -209,25 +214,29 @@ class ContinuousDumpWorker(QThread):
                     
                     if ascan_data is None:
                         self.finished_signal.emit(False, f"数据采集在第{count}次时失败")
+                        self.cleanup()
                         return
                     
                     # 发送A-Scan数据信号用于实时显示
                     self.ascan_data_available.emit(ascan_data)
                     
-                    # 第一次采集时创建文件并写入表头
-                    if count == 1:
-                        with open(main_file_path, 'w', newline='', encoding='utf-8') as f:
-                            writer = csv.writer(f)
-                            # 写入表头，第一列为道数，后续为采样点
-                            header = ['Trace'] + [f'Sample_{j}' for j in range(len(ascan_data))]
-                            writer.writerow(header)
+                    # 初始化文件和写入器（仅第一次）
+                    if not self.file_initialized:
+                        self.csv_file = open(main_file_path, 'w', newline='', encoding='utf-8')
+                        self.csv_writer = csv.writer(self.csv_file)
+                        # 写入表头，第一列为道数，后续为采样点
+                        header = ['Trace'] + [f'Sample_{j}' for j in range(len(ascan_data))]
+                        self.csv_writer.writerow(header)
+                        self.file_initialized = True
                     
-                    # 追加数据到CSV文件
-                    with open(main_file_path, 'a', newline='', encoding='utf-8') as f:
-                        writer = csv.writer(f)
+                    # 写入数据到CSV文件
+                    if self.csv_writer:
                         # 第一列为道数，后续为采样点数据
                         row_data = [count] + ascan_data.tolist()
-                        writer.writerow(row_data)
+                        self.csv_writer.writerow(row_data)
+                        # 定期刷新缓冲区，确保数据及时写入
+                        if count % 10 == 0:  # 每10次采集刷新一次
+                            self.csv_file.flush()
 
                 # 发送进度更新信号
                 self.progress_updated.emit(count)
@@ -236,8 +245,12 @@ class ContinuousDumpWorker(QThread):
                 if self.interval > 0 and self.running:
                     time.sleep(self.interval)
 
+            # 采集完成，清理资源
+            self.cleanup()
             self.finished_signal.emit(True, f"成功采集{count}组数据")
         except Exception as e:
+            # 发生异常，清理资源
+            self.cleanup()
             self.finished_signal.emit(False, f"采集过程中发生错误: {str(e)}")
 
 
@@ -278,7 +291,7 @@ class PointDumpWorker(QThread):
                     return
 
                 # 根据数据获取方式执行不同的采集逻辑
-                if self.data_acquisition_mode == "单CSV存储方式":
+                if self.data_acquisition_mode == "A-Scan分散存储":
                     # 生成文件名，格式为{prefix}_0000001.csv
                     filename = f"{self.file_prefix}_{i + 1:07d}.csv"
                     response = self.vna_controller.data_dump(
@@ -290,10 +303,6 @@ class PointDumpWorker(QThread):
                     
                     # 尝试读取刚刚存储的数据以用于实时显示
                     try:
-                        import numpy as np
-                        import csv
-                        import os
-                        
                         # 读取CSV文件
                         file_path = os.path.join(self.path, filename)
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -318,9 +327,6 @@ class PointDumpWorker(QThread):
                         pass
                 else:  # 实时数据流方式
                     # 使用新的read_ascan_data方法获取数据
-                    import numpy as np
-                    import os
-                    import csv
                     
                     # 生成主文件名，格式为{prefix}_streaming.csv
                     main_filename = f"{self.file_prefix}_streaming.csv"
@@ -392,7 +398,7 @@ class SinglePointDumpWorker(QThread):
             # 执行数据采集循环
             for i in range(self.count):
                 # 根据数据获取方式执行不同的采集逻辑
-                if self.data_acquisition_mode == "单CSV存储方式":
+                if self.data_acquisition_mode == "A-Scan分散存储":
                     # 生成文件名，格式为{prefix}_{index:08d}.csv
                     filename = f"{self.file_prefix}_{self.start_index + i:08d}.csv"
 
@@ -405,10 +411,6 @@ class SinglePointDumpWorker(QThread):
                     
                     # 尝试读取刚刚存储的数据以用于实时显示
                     try:
-                        import numpy as np
-                        import csv
-                        import os
-                        
                         # 读取CSV文件
                         file_path = os.path.join(self.path, filename)
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -433,9 +435,6 @@ class SinglePointDumpWorker(QThread):
                         pass
                 else:  # 实时数据流方式
                     # 使用新的read_ascan_data方法获取数据
-                    import numpy as np
-                    import os
-                    import csv
                     
                     # 生成主文件名，格式为{prefix}_streaming.csv
                     main_filename = f"{self.file_prefix}_streaming.csv"

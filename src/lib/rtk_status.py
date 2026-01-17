@@ -153,8 +153,9 @@ class RTKStatusBar(HeaderCardWidget):
             self._last_display_data.update(updates)
             
             # 如果有任何更新，记录日志（用于调试）
-            if updates:
-                print(f"RTK状态栏更新: {list(updates.keys())}")
+            # if updates:
+            #     print(f"RTK状态栏更新: {list(updates.keys())}")
                 
         except Exception as e:
-            print(f"RTK状态栏更新时出错: {str(e)}")
+            # print(f"RTK状态栏更新时出错: {str(e)}")
+            pass
