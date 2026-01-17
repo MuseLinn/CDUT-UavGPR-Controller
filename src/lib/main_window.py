@@ -466,7 +466,6 @@ class VNAControllerGUI(FluentWindow):
         
         self.log_message(f"主题已切换到: {theme}")
         info_bar = InfoBar.warning(
-            icon='🔔',
             title='提示',
             content='A-Scan实时显示仅在实时数据流方式下可用',
             orient='horizontal',
@@ -1587,7 +1586,8 @@ class VNAControllerGUI(FluentWindow):
         
         # 初始化B-Scan数据
         self.bscan_data = []
-        self.max_bscan_traces = 500  # 最大道数
+        # 移除最大道数限制，允许显示所有采集的数据
+        # self.max_bscan_traces = 500  # 最大道数
         
         bscan_layout.addWidget(self.bscan_plot_widget)
 
@@ -1673,9 +1673,9 @@ class VNAControllerGUI(FluentWindow):
         # 添加新数据
         self.bscan_data.append(data)
         
-        # 限制B-Scan数据长度
-        if len(self.bscan_data) > self.max_bscan_traces:
-            self.bscan_data = self.bscan_data[-self.max_bscan_traces:]
+        # 不再限制B-Scan数据长度，保留所有采集的数据
+        # if len(self.bscan_data) > self.max_bscan_traces:
+        #     self.bscan_data = self.bscan_data[-self.max_bscan_traces:]
         
         # 转换为numpy数组并转置
         bscan_array = np.array(self.bscan_data).T
