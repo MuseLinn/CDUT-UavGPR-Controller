@@ -17,7 +17,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QGroupBox, QLabel, QTextEdit, QStackedWidget,
-    QFileDialog, QGridLayout  # 添加文件对话框支持
+    QFileDialog, QGridLayout, QScrollArea  # 添加文件对话框和滚动区域支持
 )
 from PyQt6.QtCore import Qt, QSize, QFileInfo, QEventLoop, QTimer
 from PyQt6.QtGui import QFont, QIcon
@@ -242,6 +242,10 @@ class VNAControllerGUI(FluentWindow):
             self.selector_spin.setEnabled(False)
             self.file_prefix_line_edit.setEnabled(True)
             self.interval_spin.setEnabled(True)
+            
+            # 启用A-Scan实时显示
+            if hasattr(self, 'ascan_display_group'):
+                self.ascan_display_group.setEnabled(True)
         else:  # A-Scan分散存储
             # A-Scan分散存储：启用所有控件
             self.data_type_combo.setEnabled(True)
@@ -250,6 +254,24 @@ class VNAControllerGUI(FluentWindow):
             self.selector_spin.setEnabled(True)
             self.file_prefix_line_edit.setEnabled(True)
             self.interval_spin.setEnabled(True)
+            
+            # 禁用A-Scan实时显示
+            if hasattr(self, 'ascan_display_group'):
+                self.ascan_display_group.setEnabled(False)
+            
+            # 显示InfoBar提示
+            from qfluentwidgets import InfoBar, InfoBarPosition
+            info_bar = InfoBar(
+                icon='🔔',
+                title='提示',
+                content='A-Scan实时显示仅在实时数据流方式下可用',
+                orient='horizontal',
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self
+            )
+            info_bar.show()
         
         self.log_message(f"数据获取方式已切换到: {mode_text}")
 
@@ -284,8 +306,17 @@ class VNAControllerGUI(FluentWindow):
         setup_title = QLabel('系统设置')
         setup_title.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
         setup_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        setup_title.setStyleSheet("color: #007acc; margin: 10px 0;")
+        setup_title.setStyleSheet("color: #007acc; margin: 10px 0 20px 0;")
         self.setup_layout.addWidget(setup_title)
+        
+        # 使用滚动区域避免界面拥挤
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("QScrollArea { border: none; }")
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(self.spacing)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
         
         # RTK定位模块设置区域
         rtk_group = QGroupBox("RTK定位模块设置")
@@ -346,28 +377,44 @@ class VNAControllerGUI(FluentWindow):
         rtk_layout.addLayout(rtk_control_layout)
         rtk_layout.addLayout(rtk_storage_layout)
         
-        # 采集模式设置区域
-        acquisition_group = QGroupBox("采集模式设置")
+        # 数据采集设置区域
+        acquisition_group = QGroupBox("数据采集设置")
         acquisition_layout = QVBoxLayout(acquisition_group)
         acquisition_layout.setSpacing(self.spacing)
         acquisition_layout.setContentsMargins(15, 15, 15, 15)
         
         # 数据获取方式设置
-        data_acquisition_layout = QHBoxLayout()
-        data_acquisition_label = QLabel('数据获取方式:')
+        # 创建一个美观的设置项
+        data_acquisition_widget = QWidget()
+        data_acquisition_layout = QVBoxLayout(data_acquisition_widget)
+        data_acquisition_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加标题和内容
+        title_label = QLabel("数据获取方式")
+        title_label.setFont(QFont('Microsoft YaHei', 10, QFont.Weight.Bold))
+        content_label = QLabel("选择A-Scan数据的获取和存储方式")
+        content_label.setFont(QFont('Microsoft YaHei', 9))
+        content_label.setStyleSheet("color: #666666;")
+        
+        # 添加ComboBox
         self.data_acquisition_combo = ComboBox()
         self.data_acquisition_combo.addItems(['A-Scan分散存储', '实时数据流方式'])
         self.data_acquisition_combo.setCurrentIndex(1)  # 默认使用实时数据流方式
         self.data_acquisition_combo.currentIndexChanged.connect(self.on_data_acquisition_mode_changed)
+        self.data_acquisition_combo.setMinimumWidth(200)
         
-        data_acquisition_layout.addWidget(data_acquisition_label)
+        data_acquisition_layout.addWidget(title_label)
+        data_acquisition_layout.addWidget(content_label)
         data_acquisition_layout.addWidget(self.data_acquisition_combo)
-        data_acquisition_layout.addStretch()
         
-        acquisition_layout.addLayout(data_acquisition_layout)
+        acquisition_layout.addWidget(data_acquisition_widget)
         
-        self.setup_layout.addWidget(rtk_group)
-        self.setup_layout.addWidget(acquisition_group)
+        scroll_layout.addWidget(rtk_group)
+        scroll_layout.addWidget(acquisition_group)
+        scroll_layout.addStretch()
+        
+        scroll_area.setWidget(scroll_content)
+        self.setup_layout.addWidget(scroll_area)
         
         # 添加设置界面到导航栏
         self.addSubInterface(self.setupInterface, FIF.SETTING, '设置')
@@ -430,6 +477,21 @@ class VNAControllerGUI(FluentWindow):
     def refresh_rtk_ports(self):
         """刷新RTK串口列表"""
         self.log_message("刷新RTK串口列表")
+        
+        # 显示刷新开始的InfoBar
+        from qfluentwidgets import InfoBar, InfoBarPosition
+        info_bar = InfoBar(
+            icon=FIF.SYNC,
+            title='刷新串口',
+            content='正在扫描可用的串口...',
+            orient='horizontal',
+            isClosable=False,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
+        info_bar.show()
+        
         # 保存当前选择的串口（如果存在）
         current_port = self.rtk_port_combo.currentText() if self.rtk_port_combo.count() > 0 else None
         
@@ -447,17 +509,54 @@ class VNAControllerGUI(FluentWindow):
                 else:
                     self.rtk_port_combo.setCurrentText(available_ports[0])
                 self.log_message(f"发现 {len(available_ports)} 个可用串口")
+                
+                # 显示成功的InfoBar
+                success_info_bar = InfoBar.success(
+                    title='刷新成功',
+                    content=f'发现 {len(available_ports)} 个可用串口',
+                    orient='horizontal',
+                    isClosable=True,
+                    position=InfoBarPosition.TOP,
+                    duration=3000,
+                    parent=self
+                )
+                success_info_bar.show()
             else:
                 # 如果没有检测到串口，则留空并提示
                 common_ports = ['No Available Serial Port']
                 self.rtk_port_combo.addItems(common_ports)
                 self.log_message("未发现可用串口，使用默认串口列表")
+                
+                # 显示警告的InfoBar
+                warning_info_bar = InfoBar.warning(
+                    title='未发现串口',
+                    content='未发现可用串口，使用默认串口列表',
+                    orient='horizontal',
+                    isClosable=True,
+                    position=InfoBarPosition.TOP,
+                    duration=3000,
+                    parent=self
+                )
+                warning_info_bar.show()
         except Exception as e:
-            self.log_message(f"刷新RTK串口列表失败: {str(e)}")
+            error_message = f"刷新RTK串口列表失败: {str(e)}"
+            self.log_message(error_message)
             # 出错时使用模拟数据
             self.rtk_port_combo.clear()
             self.rtk_port_combo.addItems(['COM11'])
             self.rtk_port_combo.setCurrentText('COM11')
+            
+            # 显示错误的InfoBar
+            error_info_bar = InfoBar.error(
+                title='刷新失败',
+                content=error_message,
+                orient='horizontal',
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self
+            )
+            error_info_bar.show()
 
     def create_data_config_section(self):
         """创建数据采集配置区域"""

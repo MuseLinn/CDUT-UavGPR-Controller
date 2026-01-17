@@ -39,10 +39,6 @@ def main():
     font = QFont("Microsoft YaHei", 9)
     app.setFont(font)
     
-    # 设置高DPI适配，解决字体发虚问题 (PyQt6中移除了这些属性)
-    # PyQt6默认启用了高DPI支持，无需手动设置
-    app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-
     # 设置应用程序属性
     app.setApplicationName("CDUT-非显性滑坡延缓高效勘测技术装备研发")
     app.setApplicationVersion("0.8a")
