@@ -23,6 +23,39 @@ Contributor: Linn
 Email: [universe_yuan@icloud.com](mailto:universe_yuan@icloud.com)  
 Copyright (c) 2025 by Linn, All Rights Reserved.
 
+## Git Workflow
+
+For the convenience of team members to get started and contribute collaboratively, here's the basic Git workflow:
+
+1. **Clone the repository**: First, clone the code from the remote repository to local
+   ```bash
+   git clone <repository URL>
+   ```
+
+2. **Create a branch**: Create a new branch locally for development
+   ```bash
+   git checkout -b <branch name>
+   ```
+
+3. **Local development**: Make code modifications and tests on the local branch
+
+4. **Commit changes**: Commit local changes to the local repository
+   ```bash
+   git add .
+   git commit -m "Commit message"
+   ```
+
+5. **Push code**: Push the local branch to the remote repository (origin)
+   ```bash
+   git push origin <branch name>
+   ```
+
+6. **Create Pull Request**: Create a Pull Request (PR) on GitHub for others to review and merge into the target branch (usually the upstream repository's main/master branch)
+
+7. **Code review**: Wait for other contributors to review the code and make modifications based on feedback
+
+8. **Merge PR**: After review approval, the PR will be merged into the target branch
+
 ## Environment Requirements
 
 ### System Requirements
