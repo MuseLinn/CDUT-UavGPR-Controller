@@ -2,6 +2,10 @@
 
 English | [简体中文](README_zh.md)
 
+![Build workflow status](https://github.com/MuseLinn/CDUT-UavGPR-Controller/actions/workflows/build-release.yml/badge.svg) ![Build workflow status](https://github.com/MuseLinn/CDUT-UavGPR-Controller/actions/workflows/pull-request-check.yml/badge.svg)
+
+![GPR DAQ GUI Logo](src/lib/app_logo.png)
+
 ## Project Overview
 
 **DO NOT UPLOAD YOUR TEST CODES TO THE MASTER BRANCH!!!**
