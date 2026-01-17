@@ -222,6 +222,37 @@ class VNAControllerGUI(FluentWindow):
         # 启动系统时间定时器
         self.start_system_timer()
 
+        # 初始化数据获取方式控件状态
+        self.on_data_acquisition_mode_changed()
+
+    def on_data_acquisition_mode_changed(self, index=None):
+        """当数据获取方式改变时调用"""
+        # 获取当前选中的模式
+        if index is None:
+            mode_text = self.data_acquisition_combo.currentText()
+        else:
+            mode_text = self.data_acquisition_combo.itemText(index)
+        
+        # 根据数据获取方式启用/禁用相关控件
+        if mode_text == "实时数据流方式":
+            # 实时数据流方式：只启用文件前缀和间隔控件
+            self.data_type_combo.setEnabled(False)
+            self.scope_combo.setEnabled(False)
+            self.format_combo.setEnabled(False)
+            self.selector_spin.setEnabled(False)
+            self.file_prefix_line_edit.setEnabled(True)
+            self.interval_spin.setEnabled(True)
+        else:  # A-Scan分散存储
+            # A-Scan分散存储：启用所有控件
+            self.data_type_combo.setEnabled(True)
+            self.scope_combo.setEnabled(True)
+            self.format_combo.setEnabled(True)
+            self.selector_spin.setEnabled(True)
+            self.file_prefix_line_edit.setEnabled(True)
+            self.interval_spin.setEnabled(True)
+        
+        self.log_message(f"数据获取方式已切换到: {mode_text}")
+
     def center_window(self):
         """将窗口居中显示在屏幕中央"""
         # 获取屏幕尺寸
@@ -241,6 +272,105 @@ class VNAControllerGUI(FluentWindow):
 
     def initNavigation(self):
         self.addSubInterface(self.homeInterface, FIF.HOME, '主页')
+        
+        # 添加设置界面
+        self.setupInterface = QWidget()
+        self.setupInterface.setObjectName("setupInterface")
+        self.setup_layout = QVBoxLayout(self.setupInterface)
+        self.setup_layout.setSpacing(self.spacing)
+        self.setup_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 设置界面标题
+        setup_title = QLabel('系统设置')
+        setup_title.setFont(QFont('Microsoft YaHei', 16, QFont.Weight.Bold))
+        setup_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        setup_title.setStyleSheet("color: #007acc; margin: 10px 0;")
+        self.setup_layout.addWidget(setup_title)
+        
+        # RTK定位模块设置区域
+        rtk_group = QGroupBox("RTK定位模块设置")
+        rtk_layout = QVBoxLayout(rtk_group)
+        rtk_layout.setSpacing(self.spacing)
+        rtk_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # RTK串口选择和控制行
+        rtk_control_layout = QHBoxLayout()
+        rtk_port_label = QLabel('RTK串口:')
+        self.rtk_port_combo = ComboBox()
+        # 获取可用的串口列表
+        self.refresh_rtk_ports()
+        
+        rtk_refresh_button = PushButton('刷新')
+        rtk_refresh_button.clicked.connect(self.refresh_rtk_ports)
+        
+        rtk_enable_label = QLabel('启用:')
+        self.rtk_enable_switch = SwitchButton()
+        self.rtk_enable_switch.setChecked(False)
+        
+        # RTK波特率选择
+        rtk_baudrate_label = QLabel('波特率:')
+        self.rtk_baudrate_combo = ComboBox()
+        # 获取支持的波特率列表
+        supported_baudrates = RTKModule.get_baudrates()
+        baudrate_strings = [str(b) for b in supported_baudrates]
+        self.rtk_baudrate_combo.addItems(baudrate_strings)
+        self.rtk_baudrate_combo.setCurrentText('115200')  # 设置默认值为115200
+        
+        rtk_control_layout.addWidget(rtk_port_label)
+        rtk_control_layout.addWidget(self.rtk_port_combo)
+        rtk_control_layout.addWidget(rtk_refresh_button)
+        rtk_control_layout.addWidget(rtk_baudrate_label)
+        rtk_control_layout.addWidget(self.rtk_baudrate_combo)
+        rtk_control_layout.addWidget(rtk_enable_label)
+        rtk_control_layout.addWidget(self.rtk_enable_switch)
+        rtk_control_layout.addStretch()
+        
+        # RTK经纬度高程采样存储频率选择和存储开关
+        rtk_storage_layout = QHBoxLayout()
+        rtk_storage_label = QLabel('经纬度高程数据采样频率:')
+        self.rtk_storage_combo = ComboBox()
+        self.rtk_storage_combo.addItems(['1Hz', '2Hz', '5Hz', '10Hz', '20Hz'])
+        self.rtk_storage_combo.setCurrentText('2Hz')
+        
+        # 添加RTK数据存储开关
+        rtk_data_storage_label = QLabel('存储RTK数据:')
+        self.rtk_data_storage_switch = SwitchButton()
+        self.rtk_data_storage_switch.setChecked(True)  # 默认开启存储
+        
+        rtk_storage_layout.addWidget(rtk_storage_label)
+        rtk_storage_layout.addWidget(self.rtk_storage_combo)
+        rtk_storage_layout.addWidget(rtk_data_storage_label)
+        rtk_storage_layout.addWidget(self.rtk_data_storage_switch)
+        rtk_storage_layout.addStretch()
+        
+        rtk_layout.addLayout(rtk_control_layout)
+        rtk_layout.addLayout(rtk_storage_layout)
+        
+        # 采集模式设置区域
+        acquisition_group = QGroupBox("采集模式设置")
+        acquisition_layout = QVBoxLayout(acquisition_group)
+        acquisition_layout.setSpacing(self.spacing)
+        acquisition_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 数据获取方式设置
+        data_acquisition_layout = QHBoxLayout()
+        data_acquisition_label = QLabel('数据获取方式:')
+        self.data_acquisition_combo = ComboBox()
+        self.data_acquisition_combo.addItems(['A-Scan分散存储', '实时数据流方式'])
+        self.data_acquisition_combo.setCurrentIndex(1)  # 默认使用实时数据流方式
+        self.data_acquisition_combo.currentIndexChanged.connect(self.on_data_acquisition_mode_changed)
+        
+        data_acquisition_layout.addWidget(data_acquisition_label)
+        data_acquisition_layout.addWidget(self.data_acquisition_combo)
+        data_acquisition_layout.addStretch()
+        
+        acquisition_layout.addLayout(data_acquisition_layout)
+        
+        self.setup_layout.addWidget(rtk_group)
+        self.setup_layout.addWidget(acquisition_group)
+        
+        # 添加设置界面到导航栏
+        self.addSubInterface(self.setupInterface, FIF.SETTING, '设置')
 
     def log_message(self, message):
         """在状态文本框中添加日志消息"""
@@ -295,67 +425,7 @@ class VNAControllerGUI(FluentWindow):
         self.main_layout.addWidget(connection_group)
 
         # RTK控制区域
-        rtk_group = QGroupBox("RTK定位模块")
-        rtk_group_layout = QVBoxLayout(rtk_group)
-        rtk_group_layout.setSpacing(self.spacing)
-        rtk_group_layout.setContentsMargins(15, 15, 15, 15)
-
-        # RTK串口选择和控制行
-        rtk_control_layout = QHBoxLayout()
-        
-        rtk_port_label = QLabel('RTK串口:')
-        self.rtk_port_combo = ComboBox()
-        # 获取可用的串口列表
-        self.refresh_rtk_ports()  # 使用方法来初始化串口列表
-        
-        rtk_refresh_button = PushButton('刷新')
-        rtk_refresh_button.clicked.connect(self.refresh_rtk_ports)
-        
-        rtk_enable_label = QLabel('启用:')
-        self.rtk_enable_switch = SwitchButton()
-        self.rtk_enable_switch.setChecked(False)
-        
-        # RTK波特率选择
-        rtk_baudrate_label = QLabel('波特率:')
-        self.rtk_baudrate_combo = ComboBox()
-        # 获取支持的波特率列表
-        supported_baudrates = RTKModule.get_baudrates()
-        baudrate_strings = [str(b) for b in supported_baudrates]
-        self.rtk_baudrate_combo.addItems(baudrate_strings)
-        self.rtk_baudrate_combo.setCurrentText('115200')  # 设置默认值为115200
-        
-        rtk_control_layout.addWidget(rtk_port_label)
-        rtk_control_layout.addWidget(self.rtk_port_combo)
-        rtk_control_layout.addWidget(rtk_refresh_button)
-        rtk_control_layout.addWidget(rtk_baudrate_label)
-        rtk_control_layout.addWidget(self.rtk_baudrate_combo)
-        rtk_control_layout.addWidget(rtk_enable_label)
-        rtk_control_layout.addWidget(self.rtk_enable_switch)
-        rtk_control_layout.addStretch()
-        
-        # RTK经纬度高程采样存储频率选择和存储开关
-        rtk_storage_layout = QHBoxLayout()
-        rtk_storage_label = QLabel('经纬度高程数据采样频率:')
-        self.rtk_storage_combo = ComboBox()
-        self.rtk_storage_combo.addItems(['1Hz', '2Hz', '5Hz', '10Hz', '20Hz'])
-        self.rtk_storage_combo.setCurrentText('2Hz')
-        
-        # 添加RTK数据存储开关
-        rtk_data_storage_label = QLabel('存储RTK数据:')
-        self.rtk_data_storage_switch = SwitchButton()
-        self.rtk_data_storage_switch.setChecked(True)  # 默认开启存储
-        self.rtk_data_storage_switch.checkedChanged.connect(self.toggle_rtk_data_storage)
-        
-        rtk_storage_layout.addWidget(rtk_storage_label)
-        rtk_storage_layout.addWidget(self.rtk_storage_combo)
-        rtk_storage_layout.addWidget(rtk_data_storage_label)
-        rtk_storage_layout.addWidget(self.rtk_data_storage_switch)
-        rtk_storage_layout.addStretch()
-        
-        rtk_group_layout.addLayout(rtk_control_layout)
-        rtk_group_layout.addLayout(rtk_storage_layout)
-        
-        self.main_layout.addWidget(rtk_group)
+        # RTK设置已移至设置界面
 
     def refresh_rtk_ports(self):
         """刷新RTK串口列表"""
@@ -656,6 +726,11 @@ class VNAControllerGUI(FluentWindow):
         self.create_rtk_status_bar()
         if self.rtk_status_bar:
             status_group_layout.addWidget(self.rtk_status_bar)
+        
+        # 创建A-Scan实时显示区域
+        self.create_ascan_display()
+        if hasattr(self, 'ascan_display_group'):
+            status_group_layout.addWidget(self.ascan_display_group)
 
     def init_data_options(self):
         """初始化数据采集选项"""
@@ -955,6 +1030,82 @@ class VNAControllerGUI(FluentWindow):
     def create_rtk_status_bar(self):
         """创建RTK状态栏"""
         self.rtk_status_bar = RTKStatusBar()
+
+    def create_ascan_display(self):
+        """创建A-Scan实时显示区域"""
+        import pyqtgraph as pg
+        
+        # 创建A-Scan显示组
+        self.ascan_display_group = QGroupBox("A-Scan实时显示")
+        ascan_layout = QVBoxLayout(self.ascan_display_group)
+        ascan_layout.setSpacing(self.spacing)
+        ascan_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # 创建pyqtgraph图形布局
+        self.ascan_plot_widget = pg.GraphicsLayoutWidget()
+        self.ascan_plot_widget.setMinimumHeight(200)
+        
+        # 添加绘图项
+        self.ascan_plot = self.ascan_plot_widget.addPlot(title='A-Scan时域波形')
+        self.ascan_curve = self.ascan_plot.plot([], [], pen='b', lineWidth=2)
+        
+        # 设置坐标轴
+        self.ascan_plot.setLabel('bottom', '采样点')
+        self.ascan_plot.setLabel('left', '幅度')
+        self.ascan_plot.setXRange(0, 500)
+        self.ascan_plot.setYRange(-1, 1)
+        
+        # 添加控制选项
+        control_layout = QHBoxLayout()
+        
+        # 抽样显示选项
+        self.sampling_checkbox = CheckBox('抽样显示')
+        self.sampling_checkbox.setChecked(True)
+        
+        # 抽样间隔
+        self.sampling_spinbox = SpinBox()
+        self.sampling_spinbox.setRange(1, 100)
+        self.sampling_spinbox.setValue(10)
+        self.sampling_spinbox.setMinimumWidth(80)
+        
+        control_layout.addWidget(self.sampling_checkbox)
+        control_layout.addWidget(QLabel('抽样间隔:'))
+        control_layout.addWidget(self.sampling_spinbox)
+        control_layout.addStretch()
+        
+        ascan_layout.addWidget(self.ascan_plot_widget)
+        ascan_layout.addLayout(control_layout)
+
+    def update_ascan_display(self, data):
+        """更新A-Scan实时显示"""
+        if not hasattr(self, 'ascan_curve'):
+            return
+        
+        try:
+            import numpy as np
+            
+            # 检查是否启用了抽样显示
+            if self.sampling_checkbox.isChecked():
+                # 获取抽样间隔
+                sampling_interval = self.sampling_spinbox.value()
+                # 执行抽样
+                sampled_data = data[::sampling_interval]
+                x = np.arange(0, len(data), sampling_interval)
+            else:
+                # 不抽样，显示所有数据
+                sampled_data = data
+                x = np.arange(len(data))
+            
+            # 更新曲线数据
+            self.ascan_curve.setData(x, sampled_data)
+            
+            # 调整坐标轴范围
+            if len(data) > 0:
+                self.ascan_plot.setXRange(0, len(data))
+                self.ascan_plot.setYRange(np.min(data) - 0.1, np.max(data) + 0.1)
+                
+        except Exception as e:
+            self.log_message(f"更新A-Scan显示失败: {str(e)}")
 
     def update_system_time(self):
         """更新系统时间"""
@@ -1309,14 +1460,16 @@ class VNAControllerGUI(FluentWindow):
         data_format = self.format_combo.currentText()
         selector = self.selector_spin.value()
         interval = self.interval_spin.value()
+        data_acquisition_mode = self.data_acquisition_combo.currentText()
         
         # 创建并启动工作线程
         self.fixed_worker = DataDumpWorker(
-            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval
+            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval, data_acquisition_mode
         )
         # 绑定信号
         self.fixed_worker.progress_updated.connect(self.on_worker_progress)
         self.fixed_worker.finished_signal.connect(self.on_worker_finished)
+        self.fixed_worker.ascan_data_available.connect(self.update_ascan_display)
         # 启动线程
         self.fixed_worker.start()
         
@@ -1337,14 +1490,16 @@ class VNAControllerGUI(FluentWindow):
         data_format = self.format_combo.currentText()
         selector = self.selector_spin.value()
         interval = self.interval_spin.value()
+        data_acquisition_mode = self.data_acquisition_combo.currentText()
         
         # 创建并启动工作线程
         self.continuous_worker = ContinuousDumpWorker(
-            self.vna_controller, file_prefix, path, data_type, scope, data_format, selector, interval
+            self.vna_controller, file_prefix, path, data_type, scope, data_format, selector, interval, data_acquisition_mode
         )
         # 绑定信号
         self.continuous_worker.progress_updated.connect(self.on_worker_progress)
         self.continuous_worker.finished_signal.connect(self.on_worker_finished)
+        self.continuous_worker.ascan_data_available.connect(self.update_ascan_display)
         # 启动线程
         self.continuous_worker.start()
     
@@ -1366,17 +1521,19 @@ class VNAControllerGUI(FluentWindow):
         data_format = self.format_combo.currentText()
         selector = self.selector_spin.value()
         interval = self.interval_spin.value()
+        data_acquisition_mode = self.data_acquisition_combo.currentText()
         
         # 计算起始索引
         start_index = self.point_sample_counter * count
         
         # 创建并启动工作线程
         self.point_worker = SinglePointDumpWorker(
-            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval, start_index
+            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval, start_index, data_acquisition_mode
         )
         # 绑定信号
         self.point_worker.progress_updated.connect(self.on_worker_progress)
         self.point_worker.finished_signal.connect(self.on_worker_finished)
+        self.point_worker.ascan_data_available.connect(self.update_ascan_display)
         # 启动线程
         self.point_worker.start()
         
@@ -1399,14 +1556,16 @@ class VNAControllerGUI(FluentWindow):
         data_format = self.format_combo.currentText()
         selector = self.selector_spin.value()
         interval = self.interval_spin.value()
+        data_acquisition_mode = self.data_acquisition_combo.currentText()
         
         # 创建并启动工作线程
         self.point_worker = PointDumpWorker(
-            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval
+            self.vna_controller, count, file_prefix, path, data_type, scope, data_format, selector, interval, data_acquisition_mode
         )
         # 绑定信号
         self.point_worker.progress_updated.connect(self.on_worker_progress)
         self.point_worker.finished_signal.connect(self.on_worker_finished)
+        self.point_worker.ascan_data_available.connect(self.update_ascan_display)
         # 启动线程
         self.point_worker.start()
     

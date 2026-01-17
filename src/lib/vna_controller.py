@@ -7,7 +7,7 @@ LastEditTime : 2025-07-29 09:30:00
 FilePath     : \\usbvna\\src\\lib\\vna_controller.py
 Description  : VNA Controller class for KeySight USB VNA control via PyVISA
 
-Copyright (c) 2025 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
+Copyright (c) 2026 by Linn email: universe_yuan@icloud.com, All Rights Reserved.
 """
 
 import pyvisa as visa
@@ -309,4 +309,46 @@ class VNAController:
             return True
         except visa.VisaIOError as e:
             logger.error(f"Error dumping data: {e}")
+            return None
+
+    def read_ascan_data(self, channel=1, measurement=1):
+        """
+        直接读取VNA显示的A-Scan时域数据
+        使用CALC:MEAS:DATA:FDATA?获取显示的时域数据
+        采用ASCII格式以确保可靠的数据解析
+        
+        Args:
+            channel (int): 通道号，默认1
+            measurement (int): 测量编号，默认1
+            
+        Returns:
+            numpy array: A-Scan数据数组，或None如果读取失败
+        """
+        import numpy as np
+        
+        if not self.P9371B_VISA:
+            logger.warning("No device session is open.")
+            return None
+        
+        try:
+            # 设置数据格式为ASCII
+            self.write("FORM:DATA ASCII")
+            
+            # 使用FDATA获取显示的时域数据
+            command = f"CALC{channel}:MEAS{measurement}:DATA:FDATA?"
+            ascii_data = self.query(command)
+            
+            # 解析ASCII数据
+            if ascii_data:
+                # 分割数据并转换为浮点数
+                data_points = ascii_data.split(',')
+                float_data = [float(point) for point in data_points if point.strip()]
+                np_data = np.array(float_data)
+                
+                logger.debug(f"读取A-Scan时域数据完成，数据点: {len(np_data)}")
+                return np_data
+            
+            return None
+        except Exception as e:
+            logger.error(f"读取A-Scan数据失败: {e}")
             return None
