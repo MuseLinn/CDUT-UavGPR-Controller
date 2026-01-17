@@ -6,4 +6,5 @@ pyvisa>=1.12.0
 Pillow
 pyserial
 colorlog
+pyqtgraph
 logging
