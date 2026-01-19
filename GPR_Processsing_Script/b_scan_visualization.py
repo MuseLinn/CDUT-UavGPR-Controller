@@ -432,7 +432,7 @@ def generate_b_scan(folder_path):
     first_scan = read_a_scan(first_file)
     num_points = len(first_scan)
     num_scans = len(csv_files)
-    
+
     # 初始化B-scan矩阵
     b_scan = np.zeros((num_points, num_scans))
     
@@ -449,7 +449,7 @@ def generate_b_scan(folder_path):
 
 if __name__ == "__main__":
     # 替换为你的CSV文件所在文件夹路径
-    folder_path = r"C:\Users\unive\Desktop\no9_1dbm"  # 示例路径
+    folder_path = r"C:\Users\Di Jianhao\Desktop\frp_0.52.3_windows_amd64\out_s21" # 示例路径
     
     try:
         # 生成B-scan数据
