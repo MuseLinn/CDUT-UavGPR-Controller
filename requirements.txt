@@ -8,3 +8,5 @@ pyserial
 colorlog
 pyqtgraph
 logging
+pathlib
+typing
