@@ -209,11 +209,13 @@ class DataWriter:
     """
     数据写入类，用于将实时数据流以CSV格式持续写入文件
     """
-    def __init__(self, output_dir="./data"):
+    def __init__(self, output_dir="./data", batch_size=10):
         """
         初始化数据写入器
         """
         self.output_dir = output_dir
+        self.batch_size = batch_size  # 批量写入大小
+        self.batch_data = []  # 批量数据缓存
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
@@ -250,13 +252,31 @@ class DataWriter:
         with self.lock:
             if self.writer:
                 try:
-                    # 写入时间戳和数据
-                    data_str = ','.join(map(str, data))
-                    self.writer.writerow([timestamp, data_str])
-                    # 刷新文件缓冲区，确保数据立即写入
-                    self.file.flush()
+                    # 将数据添加到批量缓存
+                    self.batch_data.append((timestamp, data))
+                    
+                    # 当缓存达到批量大小时，批量写入
+                    if len(self.batch_data) >= self.batch_size:
+                        self._batch_write()
                 except Exception as e:
-                    print(f"写入CSV文件失败: {e}")
+                    print(f"添加数据到缓存失败: {e}")
+    
+    def _batch_write(self):
+        """
+        批量写入数据到CSV文件
+        """
+        try:
+            for timestamp, data in self.batch_data:
+                # 写入时间戳和数据
+                data_str = ','.join(map(str, data))
+                self.writer.writerow([timestamp, data_str])
+            
+            # 刷新文件缓冲区，确保数据写入
+            self.file.flush()
+            # 清空批量缓存
+            self.batch_data = []
+        except Exception as e:
+            print(f"批量写入CSV文件失败: {e}")
     
     def close(self):
         """
@@ -265,6 +285,9 @@ class DataWriter:
         with self.lock:
             if self.file:
                 try:
+                    # 写入剩余的数据
+                    if self.batch_data:
+                        self._batch_write()
                     self.file.close()
                     print(f"CSV文件已关闭: {self.csv_file}")
                 except Exception as e:
@@ -370,8 +393,6 @@ class DataTransmitter:
                 for packet in packets:
                     payload = json.dumps(packet, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
                     self.socket.sendto(payload, (self.server_ip, self.server_port))
-                    # 短暂延迟，避免网络拥塞
-                    time.sleep(0.001)
                 
                 return True
             except Exception as e:
@@ -411,6 +432,10 @@ class VNAServer:
         # 线程控制
         self.is_running = False
         self.acquisition_thread = None
+        self.processing_thread = None
+        
+        # 数据队列，用于在采集线程和处理线程之间传递数据
+        self.data_queue = Queue(maxsize=50)  # 设置队列最大容量为50，避免内存溢出
     
     def start(self):
         """
@@ -427,6 +452,11 @@ class VNAServer:
         self.acquisition_thread.daemon = True
         self.acquisition_thread.start()
         
+        # 启动数据处理线程
+        self.processing_thread = threading.Thread(target=self._processing_loop)
+        self.processing_thread.daemon = True
+        self.processing_thread.start()
+        
         print(f"VNA服务器已启动，采集周期: {self.acquisition_period_ms}ms")
         return True
     
@@ -437,6 +467,8 @@ class VNAServer:
         self.is_running = False
         if self.acquisition_thread:
             self.acquisition_thread.join(timeout=5.0)
+        if self.processing_thread:
+            self.processing_thread.join(timeout=5.0)
         
         # 关闭组件
         self.vna_controller.close_device()
@@ -449,6 +481,7 @@ class VNAServer:
         """
         数据采集循环
         """
+        print_counter = 0
         while self.is_running:
             start_time = time.time()
             
@@ -459,20 +492,45 @@ class VNAServer:
                 # 添加数据到缓存
                 self.data_cache.add_data(ascan_data)
                 
-                # 写入数据到CSV文件
-                self.data_writer.write_data(ascan_data)
+                # 将数据添加到处理队列，非阻塞方式
+                try:
+                    self.data_queue.put(ascan_data, block=False)
+                except Exception as e:
+                    # 队列满时忽略，避免阻塞采集线程
+                    pass
                 
-                # 直接传输数据到地面端，无需控制指令
-                self.data_transmitter.send_data(ascan_data)
-                
-                # 打印采集信息
-                print(f"采集到A-Scan数据，长度: {len(ascan_data)}，缓存大小: {self.data_cache.size()}")
+                # 每10次采集打印一次信息，减少打印频率
+                print_counter += 1
+                if print_counter % 10 == 0:
+                    print(f"采集到A-Scan数据，长度: {len(ascan_data)}，缓存大小: {self.data_cache.size()}")
+                    print_counter = 0
             
             # 控制采集周期
             elapsed = time.time() - start_time
             wait_time = self.acquisition_period_ms / 1000 - elapsed
             if wait_time > 0:
                 time.sleep(wait_time)
+    
+    def _processing_loop(self):
+        """
+        数据处理循环，负责数据写入和传输
+        """
+        while self.is_running:
+            try:
+                # 从队列中获取数据，阻塞方式，超时1秒
+                ascan_data = self.data_queue.get(timeout=1)
+                
+                # 写入数据到CSV文件
+                self.data_writer.write_data(ascan_data)
+                
+                # 传输数据到地面端
+                self.data_transmitter.send_data(ascan_data)
+                
+                # 标记任务完成
+                self.data_queue.task_done()
+            except Exception as e:
+                # 队列为空时继续循环
+                continue
 
 def main():
     """
@@ -492,7 +550,7 @@ def main():
             print("VNA服务器已启动，按Ctrl+C停止...")
             # 运行服务器
             while True:
-                time.sleep(1)
+                time.sleep(0.1)
     except KeyboardInterrupt:
         print("用户中断，停止服务器")
     finally:
