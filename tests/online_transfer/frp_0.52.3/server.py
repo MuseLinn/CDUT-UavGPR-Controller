@@ -10,7 +10,7 @@ def extract_params_and_ascans(
     csv_path: str,
     data_col_index: int = 3,
     delimiter: str = ",",
-    header_rows: int = 4\4-9/
+    header_rows: int = 4
 ) -> Tuple[Dict[str, float], List[List[float]]]:
     """
     1) 前4行第一列: 解析 'xxx = value' -> params
@@ -141,7 +141,7 @@ def chunk_by_max_bytes(
 
 def main():
     # ======= 你需要改的参数 =======
-    CSV_PATH = r"C:\Users\17844\Desktop\测线main_40dbm_普通飞高.csv"
+    CSV_PATH = r"C:\Users\unive\Desktop\GPR\yaan_processed\main_36dbm_11m_out.csv"
     DATA_COL_INDEX = 3  # 你图里“雷达反射波”在第4列 -> index=3
     SERVER_IP = "101.245.88.55"
     SERVER_PORT = 9000

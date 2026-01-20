@@ -410,9 +410,7 @@ class VNAServer:
         
         # 线程控制
         self.is_running = False
-        self.is_transferring = False
         self.acquisition_thread = None
-        self.control_thread = None
     
     def start(self):
         """
@@ -428,11 +426,6 @@ class VNAServer:
         self.acquisition_thread = threading.Thread(target=self._acquisition_loop)
         self.acquisition_thread.daemon = True
         self.acquisition_thread.start()
-        
-        # 启动控制命令处理线程
-        self.control_thread = threading.Thread(target=self._control_loop)
-        self.control_thread.daemon = True
-        self.control_thread.start()
         
         print(f"VNA服务器已启动，采集周期: {self.acquisition_period_ms}ms")
         return True
@@ -469,80 +462,17 @@ class VNAServer:
                 # 写入数据到CSV文件
                 self.data_writer.write_data(ascan_data)
                 
-                # 只在传输模式下传输数据
-                if self.is_transferring:
-                    # 传输数据到地面端
-                    self.data_transmitter.send_data(ascan_data)
-                    
-                    # 打印采集信息
-                    print(f"采集到A-Scan数据，长度: {len(ascan_data)}，缓存大小: {self.data_cache.size()}")
+                # 直接传输数据到地面端，无需控制指令
+                self.data_transmitter.send_data(ascan_data)
+                
+                # 打印采集信息
+                print(f"采集到A-Scan数据，长度: {len(ascan_data)}，缓存大小: {self.data_cache.size()}")
             
             # 控制采集周期
             elapsed = time.time() - start_time
             wait_time = self.acquisition_period_ms / 1000 - elapsed
             if wait_time > 0:
                 time.sleep(wait_time)
-    
-    def _control_loop(self):
-        """
-        控制命令处理循环
-        """
-        try:
-            # 创建UDP控制服务器
-            control_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            control_socket.bind((self.server_ip, self.server_port))
-            control_socket.settimeout(1)
-            
-            print(f"控制命令服务器已启动，监听: {self.server_ip}:{self.server_port}")
-            
-            while self.is_running:
-                try:
-                    # 接收控制命令
-                    data, addr = control_socket.recvfrom(65535)
-                    text = data.decode("utf-8", errors="replace").strip()
-                    
-                    # 解析JSON命令
-                    try:
-                        cmd_obj = json.loads(text)
-                    except json.JSONDecodeError:
-                        print(f"跳过非JSON控制命令: {text[:100]}...")
-                        continue
-                    
-                    # 处理控制命令
-                    self._process_control_command(cmd_obj)
-                    
-                except socket.timeout:
-                    continue
-                except Exception as e:
-                    print(f"处理控制命令失败: {e}")
-                    continue
-            
-            # 关闭控制服务器
-            control_socket.close()
-            print("控制命令服务器已停止")
-            
-        except Exception as e:
-            print(f"启动控制命令服务器失败: {e}")
-    
-    def _process_control_command(self, cmd_obj):
-        """
-        处理控制命令
-        :param cmd_obj: 控制命令对象
-        """
-        command_type = cmd_obj.get("type", "")
-        command = cmd_obj.get("command", "")
-        
-        if command_type == "control":
-            if command == "START_TRANSFER":
-                self.is_transferring = True
-                print("接收到开始传输命令，开始发送数据...")
-            elif command == "STOP_TRANSFER":
-                self.is_transferring = False
-                print("接收到停止传输命令，停止发送数据...")
-            else:
-                print(f"未知控制命令: {command}")
-        else:
-            print(f"未知命令类型: {command_type}")
 
 def main():
     """
@@ -550,8 +480,8 @@ def main():
     """
     # 配置参数
     DEVICE_NAME = "TCPIP0::MagicbookPro16-Hunter::hislip_PXI0_CHASSIS1_SLOT1_INDEX0::INSTR"
-    SERVER_IP = "101.245.88.55"  # 服务器IP地址
-    SERVER_PORT = 9000  # 服务器端口
+    SERVER_IP = "101.245.88.55"  # FRP服务器IP地址
+    SERVER_PORT = 9000  # FRP服务器UDP端口
     ACQUISITION_PERIOD_MS = 80  # 采集周期（毫秒）
     
     # 创建并启动VNA服务器
