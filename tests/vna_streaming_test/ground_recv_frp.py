@@ -25,8 +25,8 @@ LOCAL_IP = "127.0.0.1"          # 地面端落地 IP
 LOCAL_PORT = 9999               # 地面端落地端口
 
 # frpc.exe 的路径
-FRPC_EXE = r".\tests\online_transfer\frp_0.52.3\frpc.exe"
-FRPC_INI = r".\tests\online_transfer\frp_0.52.3\frpc.ini"
+FRPC_EXE = r"F:\研一\CDUT-UavGPR-Controller\tests\online_transfer\frp_0.52.3\frpc.exe"
+FRPC_INI = r"F:\研一\CDUT-UavGPR-Controller\tests\online_transfer\frp_0.52.3\frpc.ini"
 
 # 落盘目录
 OUT_DIR = Path.cwd() / "out_s21"
@@ -313,20 +313,41 @@ SAVE_INDEX = 0
 buffers: Dict[str, Dict[str, Any]] = {}
 analyzer = PerformanceAnalyzer()
 
-def save_s21_csv(msg_id: str, s21_list):
-    global SAVE_INDEX
+# 单文件保存相关变量
+SINGLE_CSV_FILE = None
+CSV_HEADER_WRITTEN = False
+
+# 数据保存路径
+MAIN_CSV_PATH = OUT_DIR / f"all_ascan_data_{RUN_TS}.csv"
+
+def save_to_single_csv(msg_id: str, s21_list):
+    """将所有Ascan数据保存到单个CSV文件中，每行对应一个Ascan"""
+    global CSV_HEADER_WRITTEN, SAVE_INDEX
     SAVE_INDEX += 1
-    idx_str = f"{SAVE_INDEX:04d}"
-    short_id = (msg_id or "noid")[:8]
-    filename = f"{RUN_TS}_{idx_str}_{short_id}.csv"
-    path = OUT_DIR / filename
-
-    with path.open("w", encoding="utf-8", newline="") as f:
-        f.write("S21 Real(U)\n")
-        for v in s21_list:
-            f.write(f"{v}\n")
-
-    print(f"[SAVE] {path}  (count={len(s21_list)}, msg_id={msg_id})", flush=True)
+    
+    # 确保输出目录存在
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # 打开文件（追加模式）
+    with open(MAIN_CSV_PATH, 'a', encoding='utf-8', newline='') as f:
+        # 如果是第一次写入，添加表头
+        if not CSV_HEADER_WRITTEN:
+            # 表头：Ascan编号, 消息ID, 然后是每个采样点的列名
+            header = ["Ascan_ID", "Message_ID"]
+            # 为每个采样点创建列名
+            for i in range(len(s21_list)):
+                header.append(f"Sample_{i+1}")
+            # 写入表头
+            f.write(",".join(header) + "\n")
+            CSV_HEADER_WRITTEN = True
+        
+        # 数据行：Ascan编号, 消息ID, 然后是采样数据
+        row = [str(SAVE_INDEX), msg_id]
+        row.extend([str(v) for v in s21_list])
+        # 写入数据行
+        f.write(",".join(row) + "\n")
+    
+    print(f"[SAVE] 已将Ascan {SAVE_INDEX} 写入 {MAIN_CSV_PATH}  (count={len(s21_list)}, msg_id={msg_id})", flush=True)
 
 def cleanup_expired(ttl_sec: int = 60):
     now = time.time()
@@ -417,7 +438,7 @@ def run_receiver():
             if n_samples and len(all_data) != n_samples:
                 print(f"[WARN] length mismatch: expect {n_samples}, got {len(all_data)}", flush=True)
 
-            save_s21_csv(msg_id, all_data)
+            save_to_single_csv(msg_id, all_data)
             buffers.pop(msg_id, None)
             
             # 记录处理完成时间

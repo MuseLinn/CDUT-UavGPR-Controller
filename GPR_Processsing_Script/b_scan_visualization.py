@@ -405,65 +405,181 @@ class BScan:
 
 def read_a_scan(csv_file):
     """读取单个CSV文件中的A-scan数据"""
-    # 跳过前7行表头，读取数据
-    data = np.genfromtxt(csv_file, delimiter=',', skip_header=7, skip_footer=1)
-    # 返回S21 Real(U)值（第二列）
-    return data[:, 1]
+    # 跳过第一行表头，读取数据
+    data = np.genfromtxt(csv_file, delimiter=',', skip_header=1)
+    # 返回S21 Real(U)值（只有一列）
+    return data
 
 def read_full_a_scan(csv_file):
     """读取单个CSV文件中的完整A-scan数据，包括时间轴"""
-    # 跳过前7行表头，读取数据
-    data = np.genfromtxt(csv_file, delimiter=',', skip_header=7, skip_footer=1)
+    # 跳过第一行表头，读取数据
+    s21_data = np.genfromtxt(csv_file, delimiter=',', skip_header=1)
+    # 生成时间轴数据（假设每个点间隔2ns）
+    num_points = len(s21_data)
+    time_axis = np.arange(num_points) * 2  # 生成0, 2, 4, ..., (num_points-1)*2 ns的时间轴
     # 返回完整数据（时间轴和S21 Real(U)值）
-    return data[:, 0], data[:, 1]  # 第一列是时间，第二列是S21 Real(U)
+    return time_axis, s21_data
+
+def read_single_csv_all_ascan(csv_file):
+    """读取单个CSV文件中的所有A-scan数据，该文件包含多个A-scan，每行一个A-scan"""
+    try:
+        # 打开文件并手动读取数据，避免依赖pandas
+        with open(csv_file, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        print(f"打开文件失败: {e}")
+        raise
+    
+    # 检查文件是否为空
+    if len(lines) < 2:
+        print(f"文件数据不足，至少需要包含表头和一行数据: {csv_file}")
+        raise ValueError(f"文件数据不足: {csv_file}")
+    
+    # 跳过表头行
+    data_lines = lines[1:]
+    
+    # 解析每行数据
+    all_samples = []
+    for i, line in enumerate(data_lines):
+        # 去除换行符并分割数据
+        parts = line.strip().split(',')
+        
+        # 跳过空行
+        if not parts or (len(parts) == 1 and not parts[0]):
+            continue
+        
+        # 检查数据列数是否足够
+        if len(parts) < 3:
+            print(f"第{i+2}行数据列数不足，至少需要3列: {parts}")
+            continue
+        
+        # 跳过前两列（Ascan_ID和Message_ID），转换剩余部分为浮点数
+        try:
+            samples = [float(v) for v in parts[2:]]
+            all_samples.append(samples)
+        except ValueError as e:
+            print(f"第{i+2}行数据转换失败: {e}")
+            continue
+    
+    # 检查是否成功解析任何数据
+    if not all_samples:
+        print(f"没有成功解析的数据行: {csv_file}")
+        raise ValueError(f"没有成功解析的数据行: {csv_file}")
+    
+    # 检查所有数据行的样本数是否一致
+    sample_counts = [len(samples) for samples in all_samples]
+    if len(set(sample_counts)) > 1:
+        print(f"各数据行的样本数不一致: {sample_counts}")
+        # 取最小样本数，截断其他行
+        min_samples = min(sample_counts)
+        print(f"使用最小样本数: {min_samples}")
+        all_samples = [samples[:min_samples] for samples in all_samples]
+    
+    # 将列表转换为numpy数组
+    sample_data = np.array(all_samples)
+    
+    # 转置数据，使其形状为（时间点，A-scan数）
+    b_scan_data = sample_data.T
+    
+    return b_scan_data
 
 
-def generate_b_scan(folder_path):
-    """从文件夹中的所有CSV文件生成B-scan数据"""
-    # 获取文件夹中所有CSV文件
-    csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
-    csv_files.sort()  # 按文件名排序
+def generate_b_scan(input_path):
+    """从文件夹中的所有CSV文件或单个CSV文件生成B-scan数据
     
-    if not csv_files:
-        raise ValueError("文件夹中没有找到CSV文件")
+    参数:
+    input_path: 文件夹路径（包含多个CSV文件）或单个CSV文件路径
     
-    # 读取第一个文件获取A-scan长度
-    first_file = os.path.join(folder_path, csv_files[0])
-    first_scan = read_a_scan(first_file)
-    num_points = len(first_scan)
-    num_scans = len(csv_files)
+    返回:
+    BScan对象: 包含B-scan数据的对象
+    """
+    # 检查输入路径是文件还是文件夹
+    if os.path.isdir(input_path):
+        # 从文件夹中的所有CSV文件生成B-scan数据
+        print(f"从文件夹读取多个CSV文件: {input_path}")
+        # 获取文件夹中所有CSV文件
+        csv_files = [f for f in os.listdir(input_path) if f.endswith('.csv')]
+        csv_files.sort()  # 按文件名排序
+        
+        if not csv_files:
+            raise ValueError("文件夹中没有找到CSV文件")
+        
+        # 读取第一个文件获取A-scan长度
+        first_file = os.path.join(input_path, csv_files[0])
+        first_scan = read_a_scan(first_file)
+        num_points = len(first_scan)
+        num_scans = len(csv_files)
 
-    # 初始化B-scan矩阵
-    b_scan = np.zeros((num_points, num_scans))
-    
-    # 读取每个A-scan并填充到B-scan矩阵
-    for i, csv_file in enumerate(csv_files):
-        file_path = os.path.join(folder_path, csv_file)
-        b_scan[:, i] = read_a_scan(file_path)
-        # 显示进度
-        if (i + 1) % 10 == 0 or i + 1 == num_scans:
-            print(f"已处理 {i + 1}/{num_scans} 个文件")
-    
-    return BScan(b_scan)
+        # 初始化B-scan矩阵
+        b_scan = np.zeros((num_points, num_scans))
+        
+        # 读取每个A-scan并填充到B-scan矩阵
+        for i, csv_file in enumerate(csv_files):
+            file_path = os.path.join(input_path, csv_file)
+            b_scan[:, i] = read_a_scan(file_path)
+            # 显示进度
+            if (i + 1) % 10 == 0 or i + 1 == num_scans:
+                print(f"已处理 {i + 1}/{num_scans} 个文件")
+        
+        print(f"完成B-scan生成: 时间点数={num_points}, A-scan数={num_scans}")
+        return BScan(b_scan)
+    elif os.path.isfile(input_path) and input_path.endswith('.csv'):
+        # 从单个CSV文件生成B-scan数据
+        print(f"从单个CSV文件读取所有A-scan数据: {input_path}")
+        # 读取单个CSV文件中的所有A-scan数据
+        b_scan_data = read_single_csv_all_ascan(input_path)
+        print(f"完成B-scan生成: 时间点数={b_scan_data.shape[0]}, A-scan数={b_scan_data.shape[1]}")
+        return BScan(b_scan_data)
+    else:
+        raise ValueError(f"输入路径无效: {input_path}，必须是文件夹或CSV文件")
 
 
 if __name__ == "__main__":
-    # 替换为你的CSV文件所在文件夹路径
-    folder_path = r"C:\Users\Di Jianhao\Desktop\frp_0.52.3_windows_amd64\out_s21" # 示例路径
+    # 测试从单个CSV文件生成B-scan数据
+    # 替换为你的单个CSV文件路径
+    csv_file_path = r"F:\研一\CDUT-UavGPR-Controller\tests\vna_streaming_test\out_s21\all_ascan_data_20260120_160037.csv" # 示例单个CSV文件路径
     
     try:
+        print("当前工作目录:", os.getcwd())
+        print("测试文件是否存在:", os.path.exists(csv_file_path))
+        
+        if os.path.exists(csv_file_path):
+            # 打印文件前几行内容，查看文件格式
+            with open(csv_file_path, 'r') as f:
+                print("文件前5行内容:")
+                for i, line in enumerate(f):
+                    if i < 5:
+                        print(f"第{i+1}行: {repr(line)}")
+                    else:
+                        break
+        
         # 生成B-scan数据
-        print("正在处理CSV文件...")
-        b_scan_data = generate_b_scan(folder_path)
+        print("\n正在处理单个CSV文件...")
+        b_scan_data = generate_b_scan(csv_file_path)
 
-        test_data = b_scan_data.copy().suppress_background(method='median')
+        # 显示B-scan数据的形状
+        print(f"B-scan数据形状: {b_scan_data.data.shape}")
+        print(f"时间点数: {b_scan_data.data.shape[0]}")
+        print(f"A-scan数: {b_scan_data.data.shape[1]}")
+        
+        # 打印B-scan数据内容
+        print("B-scan数据内容:")
+        print(b_scan_data.data)
+        
+        # 绘制并保存图像
         plt.figure(figsize=(10, 6))
-        plt.imshow(test_data.data, cmap='gray', aspect='auto')
+        plt.imshow(b_scan_data.data, cmap='gray', aspect='auto')
         plt.xlabel('A-Scan Unit')
         plt.ylabel('Time (ns)')
-        plt.title('B-Scan Grayscale Plot')
+        plt.title('B-Scan Grayscale Plot from Single CSV')
         plt.colorbar()
+        plt.savefig('single_csv_b_scan.png')
+        print("B-scan图像已保存为 single_csv_b_scan.png")
         plt.show()
+    except Exception as e:
+        print(f"处理过程中发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
         # TCR目标杂波比 20lg_10((1/N_T * \sum (p,q)属于T |X(p,q)|^2)/(1/N_C * \sum (p,q)属于C |X(p,q)|^2))
         import numpy as np
@@ -530,73 +646,73 @@ if __name__ == "__main__":
             print(f"time: {time}, mapped to point: {point_converted}")
             return point_converted
 
-
-        # 2. slice to get the noise background(50-380ns)
-        noise_data = test_data.data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
-        noise_data.std()
-        print(f"noise std: {noise_data.std()}")
-        # get the target area data(signal + noise)
-        target_data = test_data.data
-
-        # 3. calculate the average power ratio of background noise
-        noise_mean = noise_data.mean()
-        print(f"noise mean: {noise_mean}")
-        # calculate the average power ratio of target area
-        target_mean = target_data.mean()
-        print(f"target mean: {target_mean}")
-
-        # 4. calculate the SNR
-        SNR_linear = target_mean / noise_mean
-        SNR_dB = 10 * np.log10(SNR_linear)
-        print(f"SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
-
-        # 取其中一道A-Scan的一段时间作为噪声信号，完整A-Scan数据作为信号，计算这个信噪比
-        a_scan_data = b_scan_data.data[:, 1300]
-        a_scan_noise = a_scan_data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
-        a_scan_signal = a_scan_data
-        SNR_linear = a_scan_signal.mean() / a_scan_noise.mean()
-        SNR_dB = 10 * np.log10(SNR_linear)
-        print(f"A-Scan SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
-
-        import numpy as np
-
-
-        def time_to_index(t_ns, total_ns=700.0, n_samples=501):
-            dt = total_ns / (n_samples - 1)
-            return int(np.floor(t_ns / dt))
-
-
-        # 假设 bscan 是一个 numpy 数组，shape = (n_traces, n_samples)
-        # 如果数据是 (time, traces) 转置一下： bscan = bscan.T
-        def compute_snr_global_windows(bscan):
-            n_traces, n_samples = bscan.shape
-            i_100 = time_to_index(100.0, total_ns=700.0, n_samples=n_samples)  # 71
-            # signal: 0..i_100, noise: i_100+1 .. end
-            signal = bscan[:, :i_100 + 1]  # shape (n_traces, n_sig_samples)
-            noise = bscan[:, i_100 + 1:]  # shape (n_traces, n_noise_samples)
-
-            # per-trace SNR (rms-based)
-            rms_signal = np.sqrt(np.mean(signal ** 2, axis=1))
-            rms_noise = np.sqrt(np.mean(noise ** 2, axis=1)) + 1e-12
-            snr_lin = rms_signal / rms_noise
-            snr_db_per_trace = 20.0 * np.log10(snr_lin)
-
-            # overall SNR (aggregate)
-            rms_signal_all = np.sqrt(np.mean(signal ** 2))
-            rms_noise_all = np.sqrt(np.mean(noise ** 2)) + 1e-12
-            snr_db_overall = 20.0 * np.log10(rms_signal_all / rms_noise_all)
-
-            return {
-                'snr_db_per_trace': snr_db_per_trace,
-                'snr_db_overall': snr_db_overall,
-                'i_100': i_100
-            }
-
-        data= b_scan_data.data.T
-        print(data.shape)
-        compute_snr_global_windows(data)
-        print(compute_snr_global_windows(data))
-        print(" Done.")
+        #
+        # # 2. slice to get the noise background(50-380ns)
+        # noise_data = test_data.data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
+        # noise_data.std()
+        # print(f"noise std: {noise_data.std()}")
+        # # get the target area data(signal + noise)
+        # target_data = test_data.data
+        #
+        # # 3. calculate the average power ratio of background noise
+        # noise_mean = noise_data.mean()
+        # print(f"noise mean: {noise_mean}")
+        # # calculate the average power ratio of target area
+        # target_mean = target_data.mean()
+        # print(f"target mean: {target_mean}")
+        #
+        # # 4. calculate the SNR
+        # SNR_linear = target_mean / noise_mean
+        # SNR_dB = 10 * np.log10(SNR_linear)
+        # print(f"SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
+        #
+        # # 取其中一道A-Scan的一段时间作为噪声信号，完整A-Scan数据作为信号，计算这个信噪比
+        # a_scan_data = b_scan_data.data[:, 1300]
+        # a_scan_noise = a_scan_data[time_to_point(400, 0, 700, 501):time_to_point(500, 0, 700, 501)]
+        # a_scan_signal = a_scan_data
+        # SNR_linear = a_scan_signal.mean() / a_scan_noise.mean()
+        # SNR_dB = 10 * np.log10(SNR_linear)
+        # print(f"A-Scan SNR_linear: {SNR_linear}, SNR_dB: {SNR_dB}")
+        #
+        # import numpy as np
+        #
+        #
+        # def time_to_index(t_ns, total_ns=700.0, n_samples=501):
+        #     dt = total_ns / (n_samples - 1)
+        #     return int(np.floor(t_ns / dt))
+        #
+        #
+        # # 假设 bscan 是一个 numpy 数组，shape = (n_traces, n_samples)
+        # # 如果数据是 (time, traces) 转置一下： bscan = bscan.T
+        # def compute_snr_global_windows(bscan):
+        #     n_traces, n_samples = bscan.shape
+        #     i_100 = time_to_index(100.0, total_ns=700.0, n_samples=n_samples)  # 71
+        #     # signal: 0..i_100, noise: i_100+1 .. end
+        #     signal = bscan[:, :i_100 + 1]  # shape (n_traces, n_sig_samples)
+        #     noise = bscan[:, i_100 + 1:]  # shape (n_traces, n_noise_samples)
+        #
+        #     # per-trace SNR (rms-based)
+        #     rms_signal = np.sqrt(np.mean(signal ** 2, axis=1))
+        #     rms_noise = np.sqrt(np.mean(noise ** 2, axis=1)) + 1e-12
+        #     snr_lin = rms_signal / rms_noise
+        #     snr_db_per_trace = 20.0 * np.log10(snr_lin)
+        #
+        #     # overall SNR (aggregate)
+        #     rms_signal_all = np.sqrt(np.mean(signal ** 2))
+        #     rms_noise_all = np.sqrt(np.mean(noise ** 2)) + 1e-12
+        #     snr_db_overall = 20.0 * np.log10(rms_signal_all / rms_noise_all)
+        #
+        #     return {
+        #         'snr_db_per_trace': snr_db_per_trace,
+        #         'snr_db_overall': snr_db_overall,
+        #         'i_100': i_100
+        #     }
+        #
+        # data= b_scan_data.data.T
+        # print(data.shape)
+        # compute_snr_global_windows(data)
+        # print(compute_snr_global_windows(data))
+        # print(" Done.")
 
         # 示例1: 使用传统方式处理数据
         # print("=== 使用传统方式处理数据 ===")
