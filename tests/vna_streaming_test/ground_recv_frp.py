@@ -363,6 +363,8 @@ def run_receiver():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # 增加接收缓冲区大小，减少丢包
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65535)
     try:
         sock.bind((LOCAL_IP, LOCAL_PORT))
     except Exception as e:
@@ -471,10 +473,18 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[INFO] 用户中断，退出程序", flush=True)
+        # 在用户中断时生成性能报告
+        analyzer.stop_measurement()
+        analyzer.calculate_overall_performance()
+        analyzer.generate_report(f"performance_report_{int(time.time())}.json")
     except Exception as e:
         print(f"[ERROR] 程序异常: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        # 在异常时生成性能报告
+        analyzer.stop_measurement()
+        analyzer.calculate_overall_performance()
+        analyzer.generate_report(f"performance_report_{int(time.time())}.json")
 
 if __name__ == "__main__":
     main()

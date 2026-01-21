@@ -389,6 +389,9 @@ class DataTransmitter:
                 # 分片数据
                 packets = self.chunk_by_max_bytes(base_obj, data.tolist())
                 
+                # 增加发送缓冲区大小
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65535)
+                
                 # 发送数据包
                 for packet in packets:
                     payload = json.dumps(packet, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
