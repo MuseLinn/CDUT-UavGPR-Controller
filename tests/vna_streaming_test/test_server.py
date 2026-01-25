@@ -130,8 +130,9 @@ class SimpleVNAController:
             return None
         
         try:
-            # 设置数据格式为ASCII
-            self.write("FORM:DATA ASCII")
+            # DONE：单独设置数据格式，避免连续读取数据时，重复设置数据格式
+            # # 设置数据格式为ASCII
+            # self.write("FORM:DATA ASCII")
             
             # 使用FDATA获取显示的时域数据
             command = f"CALC{self.current_channel}:MEAS{self.current_measurement}:DATA:FDATA?"
@@ -485,6 +486,10 @@ class VNAServer:
         数据采集循环
         """
         print_counter = 0
+
+        # 设置数据格式为ASCII
+        self.vna_controller.write("FORM:DATA ASCII")
+
         while self.is_running:
             start_time = time.time()
             
