@@ -9,4 +9,3 @@ colorlog
 pyqtgraph
 logging
 pathlib
-typing
