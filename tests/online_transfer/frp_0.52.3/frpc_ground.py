@@ -7,7 +7,10 @@ import struct
 import threading
 import time
 import uuid
-
+try:
+    from frp_helper import run_frpc
+except ImportError:
+    from frpc_helper import run_frpc
 # 解析 UAV A-Scan 分片头（和 UAV 一致）
 MAGIC = b"ASCN"
 HDR_FMT = "!4sIHHQ"
@@ -88,7 +91,19 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     stop_evt = threading.Event()
-
+    h = run_frpc(
+        frpc_path=r"frpc.exe",
+        server_addr="101.245.88.55",
+        server_port=7000,
+        token="61a594e10edb340fe8b33fda29899567",
+        proxies=[
+            {"name": "ground_ascan_in", "type": "udp", "local_ip": "127.0.0.1", "local_port": 9999,
+             "remote_port": 9000},
+        ],
+        out_dir="frp_run",
+        fmt="ini",
+        name="frpc_ground",
+    )
     # 后台线程：接收 A-Scan 并打印
     t_rx = threading.Thread(
         target=ascan_rx_print_loop,
@@ -121,4 +136,5 @@ if __name__ == "__main__":
 
     finally:
         stop_evt.set()
+        h.stop()
         time.sleep(0.2)
